@@ -1,115 +1,150 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
+import React, { useState } from 'react';
+import { TextInput, Alert } from 'react-native';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import { Box } from '@/components/ui/box';
-import { Text } from '@/components/ui/text';
-import { ScrollView } from '@/components/ui/scroll-view';
-import { Card } from '@/components/ui/card';
 import { VStack } from '@/components/ui/vstack';
-import { Heading } from '@/components/ui/heading';
 import { Button, ButtonText } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { Heading } from '@/components/ui/heading';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
+import firebaseConfig from '@/firebaseConfig'; // Import your Firebase config
 
-export default function HomeScreen() {
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+// Extend the Window interface to include recaptchaVerifier
+declare global {
+    interface Window {
+        recaptchaVerifier?: RecaptchaVerifier;
+    }
+}
+
+export default function AuthScreens() {
+    const [screen, setScreen] = useState<'login' | 'signup' | 'otp'>('login');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [otp, setOtp] = useState('');
+    const [verificationId, setVerificationId] = useState('');
+
+    // Initialize Recaptcha
+    const setupRecaptcha = () => {
+        if (typeof window !== 'undefined' && !window.recaptchaVerifier) {
+            window.recaptchaVerifier = new RecaptchaVerifier(
+              
+                auth,
+                'recaptcha-container',
+                {
+                    size: 'invisible',
+                    callback: () => {
+                        console.log('Recaptcha verified');
+                    },
+                }
+            );
+        }
+    };
+
+    const handleLogin = async () => {
+        try {
+            setupRecaptcha();
+            const appVerifier = window.recaptchaVerifier;
+            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+            setVerificationId(confirmationResult.verificationId);
+            setScreen('otp');
+            Alert.alert('OTP Sent', 'Please check your phone for the OTP.');
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');
+        }
+    };
+
+    const handleVerifyOtp = async () => {
+        try {
+            const credential = PhoneAuthProvider.credential(verificationId, otp);
+            await signInWithCredential(auth, credential);
+            Alert.alert('Success', 'OTP Verified!');
+            setScreen('login');
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'Invalid OTP. Please try again.');
+        }
+    };
+
     return (
         <GluestackUIProvider>
-            <Card className="p-5 rounded-lg max-w-[360px] m-3">
-      <Image
-        source={{
-          uri: "https://gluestack.github.io/public-blog-video-assets/saree.png",
-        }}
-        className="mb-6 h-[240px] w-full rounded-md aspect-[4/3]"
-        alt="image"
-      />
-      <Text className="text-sm font-normal mb-2 text-typography-700">
-        Fashion Clothing
-      </Text>
-      <VStack className="mb-6">
-        <Heading size="md" className="mb-4">
-          Cotton Kurta
-        </Heading>
-        <Text size="sm">
-          Floral embroidered notch neck thread work cotton kurta in white and
-          black.
-        </Text>
-      </VStack>
-      <Box className="flex-col sm:flex-row">
-        <Button className="px-4 py-2 mr-0 mb-3 sm:mr-3 sm:mb-0 sm:flex-1">
-          <ButtonText size="sm">Add to cart</ButtonText>
-        </Button>
-        <Button
-          variant="outline"
-          className="px-4 py-2 border-outline-300 sm:flex-1"
-        >
-          <ButtonText size="sm" className="text-typography-600">
-            Wishlist
-          </ButtonText>
-        </Button>
-      </Box>
-    </Card>
-            <ScrollView>
-            <Box className="bg-[#A1CEDC] dark:bg-[#1D3D47] relative h-50">
-                <Image
-                source={require('@/assets/images/partial-react-logo.png')}
-                style={styles.reactLogo}
-                />
+            <Box className="flex-1 bg-white justify-center items-center px-4">
+                {/* Recaptcha container */}
+                {typeof window !== 'undefined' && <div id="recaptcha-container"></div>}
+
+                {screen === 'login' && (
+                    <VStack className="w-full max-w-[400px] p-6 bg-white rounded-lg shadow-md">
+                        <Heading size="lg" className="mb-4 text-center">
+                            Login
+                        </Heading>
+                        <TextInput
+                            placeholder="Enter Phone Number"
+                            keyboardType="phone-pad"
+                            value={phoneNumber}
+                            onChangeText={setPhoneNumber}
+                            style={{
+                                height: 50,
+                                borderColor: '#ddd',
+                                borderWidth: 1,
+                                borderRadius: 8,
+                                paddingHorizontal: 10,
+                                marginBottom: 20,
+                                fontSize: 16,
+                                backgroundColor: '#f9f9f9',
+                            }}
+                        />
+                        <Button className="mb-4" onPress={handleLogin}>
+                            <ButtonText>Send OTP</ButtonText>
+                        </Button>
+                        <Text className="text-center text-typography-600">
+                            Don't have an account?{' '}
+                            <Text
+                                className="text-primary-600 font-semibold"
+                                onPress={() => setScreen('signup')}
+                            >
+                                Sign Up
+                            </Text>
+                        </Text>
+                    </VStack>
+                )}
+
+                {screen === 'otp' && (
+                    <VStack className="w-full max-w-[400px] p-6 bg-white rounded-lg shadow-md">
+                        <Heading size="lg" className="mb-4 text-center">
+                            Verify OTP
+                        </Heading>
+                        <TextInput
+                            placeholder="Enter OTP"
+                            keyboardType="number-pad"
+                            value={otp}
+                            onChangeText={setOtp}
+                            style={{
+                                height: 50,
+                                borderColor: '#ddd',
+                                borderWidth: 1,
+                                borderRadius: 8,
+                                paddingHorizontal: 10,
+                                marginBottom: 20,
+                                fontSize: 16,
+                                backgroundColor: '#f9f9f9',
+                            }}
+                        />
+                        <Button className="mb-4" onPress={handleVerifyOtp}>
+                            <ButtonText>Verify OTP</ButtonText>
+                        </Button>
+                        <Text className="text-center text-typography-600">
+                            Didn't receive the OTP?{' '}
+                            <Text className="text-primary-600 font-semibold" onPress={handleLogin}>
+                                Resend
+                            </Text>
+                        </Text>
+                    </VStack>
+                )}
             </Box>
-            <Box className="px-4 py-6">
-                <Box className="flex-row items-center gap-2">
-                <Text className="text-2xl font-bold">
-                    Welcome!
-                </Text>
-                <HelloWave />
-                </Box>
-                <Box className="mt-4 gap-2">
-                <Text className="text-lg font-semibold">
-                    Step 1: Try it
-                </Text>
-                <Text>
-                    Edit <Text className="font-semibold">app/(tabs)/index.tsx</Text> to see changes. Press{' '}
-                    <Text className="font-semibold">
-                    {Platform.select({
-                        ios: 'cmd + d',
-                        android: 'cmd + m',
-                        web: 'F12',
-                    })}
-                    </Text>{' '}
-                    to open developer tools.
-                </Text>
-                </Box>
-                <Box className="mt-4 gap-2">
-                <Text className="text-lg font-semibold">
-                    Step 2: Explore
-                </Text>
-                <Text>
-                    {`Tap the Explore tab to learn more about what's included in this starter app.`}
-                </Text>
-                </Box>
-                <Box className="mt-4 gap-2">
-                <Text className="text-lg font-semibold">
-                    Step 3: Get a fresh start
-                </Text>
-                <Text>
-                    {`When you're ready, run `}
-                    <Text className="font-semibold">npm run reset-project</Text> to get a fresh{' '}
-                    <Text className="font-semibold">app</Text> directory. This will move the current{' '}
-                    <Text className="font-semibold">app</Text> to{' '}
-                    <Text className="font-semibold">app-example</Text>.
-                </Text>
-                </Box>
-            </Box>
-            </ScrollView>
         </GluestackUIProvider>
     );
 }
-
-const styles = StyleSheet.create({
-    reactLogo: {
-        height: 178,
-        width: 290,
-        bottom: 0,
-        left: 0,
-        position: 'absolute',
-    },
-});
