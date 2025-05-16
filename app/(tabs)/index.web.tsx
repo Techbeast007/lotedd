@@ -1,150 +1,75 @@
-import React, { useState } from 'react';
-import { TextInput, Alert } from 'react-native';
-import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
-import { Box } from '@/components/ui/box';
-import { VStack } from '@/components/ui/vstack';
-import { Button, ButtonText } from '@/components/ui/button';
-import { Text } from '@/components/ui/text';
-import { Heading } from '@/components/ui/heading';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPhoneNumber, RecaptchaVerifier, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-import firebaseConfig from '@/firebaseConfig'; // Import your Firebase config
+import { Image } from 'expo-image';
+import { Platform, StyleSheet } from 'react-native';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+import { HelloWave } from '@/components/HelloWave';
+import ParallaxScrollView from '@/components/ParallaxScrollView';
+import { ThemedText } from '@/components/ThemedText';
+import { ThemedView } from '@/components/ThemedView';
 
-// Extend the Window interface to include recaptchaVerifier
-declare global {
-    interface Window {
-        recaptchaVerifier?: RecaptchaVerifier;
-    }
+export default function HomeScreen() {
+  return (
+    <ParallaxScrollView
+      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
+      headerImage={
+        <Image
+          source={require('@/assets/images/partial-react-logo.png')}
+          style={styles.reactLogo}
+        />
+      }>
+      <ThemedView style={styles.titleContainer}>
+        <ThemedText type="title">Welcome!</ThemedText>
+        <HelloWave />
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
+        <ThemedText>
+          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
+          Press{' '}
+          <ThemedText type="defaultSemiBold">
+            {Platform.select({
+              ios: 'cmd + d',
+              android: 'cmd + m',
+              web: 'F12',
+            })}
+          </ThemedText>{' '}
+          to open developer tools.
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
+        <ThemedText>
+          {`Tap the Explore tab to learn more about what's included in this starter app.`}
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
+        <ThemedText>
+          {`When you're ready, run `}
+          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
+          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
+          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
+          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
+        </ThemedText>
+      </ThemedView>
+    </ParallaxScrollView>
+  );
 }
 
-export default function AuthScreens() {
-    const [screen, setScreen] = useState<'login' | 'signup' | 'otp'>('login');
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [otp, setOtp] = useState('');
-    const [verificationId, setVerificationId] = useState('');
-
-    // Initialize Recaptcha
-    const setupRecaptcha = () => {
-        if (typeof window !== 'undefined' && !window.recaptchaVerifier) {
-            window.recaptchaVerifier = new RecaptchaVerifier(
-              
-                auth,
-                'recaptcha-container',
-                {
-                    size: 'invisible',
-                    callback: () => {
-                        console.log('Recaptcha verified');
-                    },
-                }
-            );
-        }
-    };
-
-    const handleLogin = async () => {
-        try {
-            setupRecaptcha();
-            const appVerifier = window.recaptchaVerifier;
-            const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-            setVerificationId(confirmationResult.verificationId);
-            setScreen('otp');
-            Alert.alert('OTP Sent', 'Please check your phone for the OTP.');
-        } catch (error) {
-            console.error(error);
-            Alert.alert('Error', error instanceof Error ? error.message : 'An unknown error occurred');
-        }
-    };
-
-    const handleVerifyOtp = async () => {
-        try {
-            const credential = PhoneAuthProvider.credential(verificationId, otp);
-            await signInWithCredential(auth, credential);
-            Alert.alert('Success', 'OTP Verified!');
-            setScreen('login');
-        } catch (error) {
-            console.error(error);
-            Alert.alert('Error', 'Invalid OTP. Please try again.');
-        }
-    };
-
-    return (
-        <GluestackUIProvider>
-            <Box className="flex-1 bg-white justify-center items-center px-4">
-                {/* Recaptcha container */}
-                {typeof window !== 'undefined' && <div id="recaptcha-container"></div>}
-
-                {screen === 'login' && (
-                    <VStack className="w-full max-w-[400px] p-6 bg-white rounded-lg shadow-md">
-                        <Heading size="lg" className="mb-4 text-center">
-                            Login
-                        </Heading>
-                        <TextInput
-                            placeholder="Enter Phone Number"
-                            keyboardType="phone-pad"
-                            value={phoneNumber}
-                            onChangeText={setPhoneNumber}
-                            style={{
-                                height: 50,
-                                borderColor: '#ddd',
-                                borderWidth: 1,
-                                borderRadius: 8,
-                                paddingHorizontal: 10,
-                                marginBottom: 20,
-                                fontSize: 16,
-                                backgroundColor: '#f9f9f9',
-                            }}
-                        />
-                        <Button className="mb-4" onPress={handleLogin}>
-                            <ButtonText>Send OTP</ButtonText>
-                        </Button>
-                        <Text className="text-center text-typography-600">
-                            Don't have an account?{' '}
-                            <Text
-                                className="text-primary-600 font-semibold"
-                                onPress={() => setScreen('signup')}
-                            >
-                                Sign Up
-                            </Text>
-                        </Text>
-                    </VStack>
-                )}
-
-                {screen === 'otp' && (
-                    <VStack className="w-full max-w-[400px] p-6 bg-white rounded-lg shadow-md">
-                        <Heading size="lg" className="mb-4 text-center">
-                            Verify OTP
-                        </Heading>
-                        <TextInput
-                            placeholder="Enter OTP"
-                            keyboardType="number-pad"
-                            value={otp}
-                            onChangeText={setOtp}
-                            style={{
-                                height: 50,
-                                borderColor: '#ddd',
-                                borderWidth: 1,
-                                borderRadius: 8,
-                                paddingHorizontal: 10,
-                                marginBottom: 20,
-                                fontSize: 16,
-                                backgroundColor: '#f9f9f9',
-                            }}
-                        />
-                        <Button className="mb-4" onPress={handleVerifyOtp}>
-                            <ButtonText>Verify OTP</ButtonText>
-                        </Button>
-                        <Text className="text-center text-typography-600">
-                            Didn't receive the OTP?{' '}
-                            <Text className="text-primary-600 font-semibold" onPress={handleLogin}>
-                                Resend
-                            </Text>
-                        </Text>
-                    </VStack>
-                )}
-            </Box>
-        </GluestackUIProvider>
-    );
-}
+const styles = StyleSheet.create({
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  stepContainer: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  reactLogo: {
+    height: 178,
+    width: 290,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+  },
+});
