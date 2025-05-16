@@ -15,6 +15,13 @@ import React, { useState } from 'react';
 import { TextInput } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+// Extend the Window interface to include recaptchaVerifier
+declare global {
+  interface Window {
+    recaptchaVerifier?: RecaptchaVerifier;
+  }
+}
+
 
 
 // Initialize Firebase

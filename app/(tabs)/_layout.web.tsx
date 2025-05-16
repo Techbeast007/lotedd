@@ -1,31 +1,62 @@
-import { Slot, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+// (tabs)/_layout.tsx
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { Colors } from '@/constants/Colors';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { Tabs } from 'expo-router';
+import React, { useState } from 'react';
+import { Platform, Pressable } from 'react-native';
+import ProfileDrawer from './profiletab';
 
-export default function TabsLayoutWeb() {
-  const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
+export default function TabLayout() {
+  const colorScheme = useColorScheme();
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
-  useEffect(() => {
-    const checkUser = async () => {
-      try {
-        // Simulate async even though localStorage is sync (for parity with native)
-        const user = await Promise.resolve(localStorage.getItem('user'));
+  return (
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+          tabBarStyle: Platform.select({
+            ios: { position: 'absolute' },
+            default: {},
+          }),
+        }}
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color }) => <IconSymbol name="house.fill" size={28} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="explore"
+          options={{
+            title: 'Explore',
+            tabBarIcon: ({ color }) => <IconSymbol name="paperplane.fill" size={28} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="empty" // This screen doesn't render anything, just placeholder
+          options={{
+            
+            tabBarButton: (props) => (
+              <Pressable
+                {...props}
+                onPress={() => {
+                  setDrawerVisible(true);
+                }}
+                ref={undefined} // Explicitly set ref to undefined to avoid type conflict
+              >
+                <IconSymbol name="person.fill" size={28} color={props.accessibilityState?.selected ? Colors[colorScheme ?? 'light'].tint : 'gray'} />
+              </Pressable>
+            ),
+          }}
+        />
+      </Tabs>
 
-        if (!user) {
-          router.replace('/role-selection');
-        } else {
-          setIsReady(true);
-        }
-      } catch (e) {
-        console.error("Auth check error (web):", e);
-        router.replace('/role-selection');
-      }
-    };
-
-    checkUser();
-  });
-
-  if (!isReady) return null;
-
-  return <Slot />;
+      <ProfileDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
+    </>
+  );
 }
