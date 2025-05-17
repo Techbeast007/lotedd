@@ -1,62 +1,52 @@
-// (tabs)/_layout.tsx
+import { Tabs } from 'expo-router';
+import React from 'react';
+import { Platform } from 'react-native';
+
+import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { Tabs } from 'expo-router';
-import React, { useState } from 'react';
-import { Platform, Pressable } from 'react-native';
-import ProfileDrawer from './profiletab';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const [drawerVisible, setDrawerVisible] = useState(false);
 
   return (
-    <>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-          tabBarStyle: Platform.select({
-            ios: { position: 'absolute' },
-            default: {},
-          }),
+    <Tabs
+      screenOptions={{
+        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        headerShown: false,
+        tabBarButton: HapticTab,
+        tabBarBackground: TabBarBackground,
+        tabBarStyle: Platform.select({
+          ios: {
+            // Use a transparent background on iOS to show the blur effect
+            position: 'absolute',
+          },
+          default: {},
+        }),
+      }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Home',
-            tabBarIcon: ({ color }) => <IconSymbol name="house.fill" size={28} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: 'Explore',
-            tabBarIcon: ({ color }) => <IconSymbol name="paperplane.fill" size={28} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="empty" // This screen doesn't render anything, just placeholder
-          options={{
-            
-            tabBarButton: (props) => (
-              <Pressable
-                {...props}
-                onPress={() => {
-                  setDrawerVisible(true);
-                }}
-                ref={undefined} // Explicitly set ref to undefined to avoid type conflict
-              >
-                <IconSymbol name="person.fill" size={28} color={props.accessibilityState?.selected ? Colors[colorScheme ?? 'light'].tint : 'gray'} />
-              </Pressable>
-            ),
-          }}
-        />
-      </Tabs>
-
-      <ProfileDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
-    </>
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: 'Explore',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+        }}
+      />
+            <Tabs.Screen
+        name="profilesection"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,
+        }}
+      />
+    </Tabs>
   );
 }
