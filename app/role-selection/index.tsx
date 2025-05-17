@@ -40,21 +40,22 @@ export default function RoleSelectionScreen() {
       {/* Background Curve on Right */}
       <Box
         style={{
-          width: 500,
+          width:300,
           height: 300,
           position: 'absolute',
-          top: -90,
+          top: '40%',
           right: -150,
-          backgroundColor: '#004CFF', // Use button color
-          opacity: 0.8,
-          transform: [{ rotate: '60deg' }],
-          zIndex: 999,
           borderRadius: '50%', // Make it circular
+          
+          opacity: 0.8,
+          transform: [{ rotate: '-130deg' }],
+          zIndex: 1,
+
           overflow: 'hidden',
         }}
       >
         <Image
-          source={{ uri: 'https://via.placeholder.com/500x300/004CFF/FFFFFF?text=Our+Blue+Image' }}
+          source={require('@/assets/images/bubble02.png')}
           alt="Background Curve"
           style={{
         width: '100%',
@@ -62,15 +63,16 @@ export default function RoleSelectionScreen() {
           }}
         />
       </Box>
+      
 
       {/* Background Curve on Left */}
       <Box
         style={{
-          width: 500,
-          height: 300,
+          width: 200,
+          height: 200,
           position: 'absolute',
-          top: -90,
-          left: -190,
+          top: '15%',
+          left: -80,
           backgroundColor: '#D9E4FF', // New color
           opacity: 0.8,
           transform: [{ rotate: '-60deg' }],
@@ -79,8 +81,9 @@ export default function RoleSelectionScreen() {
           overflow: 'hidden',
         }}
       >
+        
         <Image
-          source={{ uri: 'https://via.placeholder.com/500x300/D9E4FF/FFFFFF?text=Our+Light+Blue+Image' }}
+          source={require('@/assets/images/bubble3.png')}
           alt="Background Curve"
           style={{
         width: '100%',
@@ -90,24 +93,24 @@ export default function RoleSelectionScreen() {
       </Box>
 
       {/* Circular Div with Shadow and Icon */}
-      <Center className="w-150 h-150 bg-white rounded-full shadow-lg mb-6">
+      <Center className="w-200 h-200 p-5 bg-white rounded-full shadow-lg mb-6 zIndex-[999]">
         <Image
-        source={{ uri: 'https://t4.ftcdn.net/jpg/03/32/31/65/360_F_332316530_ofa4oQA3ZGWxd4tRLDqKuADfy2hnpWuU.jpg' }}
+        source={ require('@/assets/images/important.png') }
         alt="Icon"
-        style={{ width: 140, height: 140, borderRadius: 50 }}
+        style={{ width: 80, height: 80, borderRadius: 50 }}
         />
       </Center>
 
       {/* LOTWALLA Title */}
       <Text
-        className="text-5xl font-bold text-gray-800 border-4 border-gray-800 px-6 py-2 rounded-lg mb-10"
-        style={{ letterSpacing: 2 }}
+        className="text-5xl font-bold text-gray-800 border-4 border-gray-800 px-6 py-2 rounded-lg mb-10 zIndex-[999]"
+        style={{ letterSpacing: 2,zIndex: 999 }}
       >
         LOTWALLA
       </Text>
 
       {/* Buttons for Role Selection */}
-      <VStack className="w-full max-w-[300px] space-y-4">
+      <VStack className="w-full max-w-[300px] space-y-4" style={{ zIndex: 999 }}>
         <Button
         className="w-full gap-2 bg-[#004CFF]"
         variant="solid"

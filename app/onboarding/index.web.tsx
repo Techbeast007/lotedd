@@ -27,7 +27,7 @@ export default function OnboardingScreen() {
 
   useEffect(() => {
     // Fetch the role from localStorage
-    const storedRole = localStorage.getItem('primaryRole');
+    const storedRole = localStorage.getItem('currentRole');
     setRole(storedRole);
   }, []);
 
@@ -69,6 +69,7 @@ export default function OnboardingScreen() {
 
       // Update Firestore
       await updateDoc(doc(db, 'users', user.uid), userData);
+      await localStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
 
       console.log('User data saved successfully:', userData);
       alert('Profile updated successfully!');

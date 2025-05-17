@@ -21,7 +21,7 @@ export default function OnboardingScreen() {
   useEffect(() => {
     // Fetch the role from AsyncStorage
     const fetchRole = async () => {
-      const storedRole = await AsyncStorage.getItem('primaryRole');
+      const storedRole = await AsyncStorage.getItem('currentRole');
       setRole(storedRole);
     };
     fetchRole();
@@ -62,6 +62,7 @@ export default function OnboardingScreen() {
       }
 
       await firestore().collection('users').doc(uid).update(userData);
+      await AsyncStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
 
       console.log('User data saved successfully:', userData);
       Alert.alert('Success', 'Profile updated successfully!');

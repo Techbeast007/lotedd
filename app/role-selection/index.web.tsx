@@ -83,11 +83,11 @@ export default function RoleSelectionScreen() {
       </Box>
 
       {/* Circular Div with Shadow and Icon */}
-      <Center className="w-150 h-150 bg-white rounded-full shadow-lg mb-6">
+      <Center className="w-150 h-150 p-4 bg-white rounded-full shadow-lg mb-6">
         <Image
-        source={{ uri: 'https://t4.ftcdn.net/jpg/03/32/31/65/360_F_332316530_ofa4oQA3ZGWxd4tRLDqKuADfy2hnpWuU.jpg' }}
+        source={ require('@/assets/images/important.png') }
         alt="Icon"
-        style={{ width: 140, height: 140, borderRadius: 50 }}
+        style={{ width: 100, height: 100, borderRadius: 50 }}
         />
       </Center>
 
