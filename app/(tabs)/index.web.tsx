@@ -3,11 +3,14 @@ import { Platform, StyleSheet } from 'react-native';
 
 import { HelloWave } from '@/components/HelloWave';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
+import StickyAddProductButton from '@/components/StickyAddProductButton';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { Box } from '@/components/ui/box';
+
 
 export default function HomeScreen() {
-  return (
+  return (<>
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
       headerImage={
@@ -51,8 +54,12 @@ export default function HomeScreen() {
           <ThemedText type="defaultSemiBold">app-example</ThemedText>.
         </ThemedText>
       </ThemedView>
+       
     </ParallaxScrollView>
-  );
+    <Box className='absolute bottom-5 right-5'>
+      <StickyAddProductButton />
+    </Box>
+  </>);
 }
 
 const styles = StyleSheet.create({
