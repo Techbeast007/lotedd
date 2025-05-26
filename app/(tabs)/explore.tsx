@@ -13,10 +13,9 @@ import { Table, TableBody, TableData, TableHead, TableHeader, TableRow } from '@
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, getFirestore, query, where } from '@react-native-firebase/firestore';
+import { collection, getDocs, getFirestore, query, where, QueryConstraint, limit as firestoreLimit  } from '@react-native-firebase/firestore';
 import { CheckIcon, SlidersHorizontal } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-
 
 const Explore = () => {
   interface Product {
@@ -34,57 +33,90 @@ const Explore = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showDrawer, setShowDrawer] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
+  const [status, setStatus] = useState<string[]>([]);
+  const [availableStatus,setavailableStatus] = useState<string[]>(['Active', 'Inactive', 'Pending']);
   const [brands, setBrands] = useState<string[]>([]);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<number>(10000);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setIsLoading(true);
-        const firestore = getFirestore();
-        const sellerId = await AsyncStorage.getItem('user'); // Fetch the logged-in seller's ID
-        if (!sellerId) {
-          console.error('Seller ID not found.');
-          setIsLoading(false);
-          return;
-        }
+
   
-        const productsRef = collection(firestore, 'products');
-        const q = query(productsRef, where('sellerId', '==', sellerId));
-        const querySnapshot = await getDocs(q);
-  
-        const fetchedProducts = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            skuId: data.skuId || '',
-            name: data.name || '',
-            categoryName: data.categoryName || '',
-            description: data.description || '',
-            measurements: data.measurements || '',
-            images: data.images || [],
-          };
-        });
-  
-        setProducts(fetchedProducts);
-        setFilteredProducts(fetchedProducts); // Initialize filtered products
-  
-        // Extract unique categories
-        const uniqueCategories: string[] = [
-          ...new Set(fetchedProducts.map((product) => product.categoryName)),
-        ];
-        setCategories(uniqueCategories); // Set the categories dynamically
-        setAvailableCategories(uniqueCategories); // Populate availableCategories
-      } catch (error) {
-        console.error('Error fetching products:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-  
-    fetchProducts();
+    fetchProducts(10);
   }, []);
+
+
+  const fetchProducts = async (limitCount: number = 10) => {
+    try {
+    setIsLoading(true);
+    const firestore = getFirestore();
+    const sellerId = await AsyncStorage.getItem('user'); // Fetch the logged-in seller's ID
+    if (!sellerId) {
+      console.error('Seller ID not found.');
+      setIsLoading(false);
+      return;
+    }
+    function customLimit(limitCount: number): QueryConstraint {
+      return firestoreLimit(limitCount);
+    }
+  
+    const productsRef = collection(firestore, 'products');
+    const q = query(
+      productsRef,
+      where('sellerId', '==', sellerId),
+      customLimit(limitCount) // Limit the number of products fetched
+    );
+    const querySnapshot = await getDocs(q);
+  
+    const fetchedProducts = querySnapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+      id: doc.id,
+      skuId: data.skuId || '',
+      name: data.name || '',
+      categoryName: data.categoryName || '',
+      description: data.description || '',
+      measurements: data.measurements || '',
+      images: data.images || [],
+      basePrice: data.basePrice || 0,
+      brand: data.brand || '',
+      categoryId: data.categoryId || '',
+      color: data.color || '',
+      createdAt: data.createdAt || null,
+      discountPrice: data.discountPrice || 0,
+      featuredImage: data.featuredImage || '',
+      shortDescription: data.shortDescription || '',
+      size: data.size || '',
+      status: data.status || '',
+      stockQuantity: data.stockQuantity || 0,
+      videos: data.videos || [],
+      weight: data.weight || 0,
+      };
+    });
+  
+    setProducts(fetchedProducts);
+    setFilteredProducts(fetchedProducts); // Initialize filtered products
+  
+    // Extract unique categories
+    const uniqueCategories: string[] = [
+      ...new Set(fetchedProducts.map((product) => product.categoryName)),
+    ];
+    setCategories(uniqueCategories); // Set the categories dynamically
+    setAvailableCategories(uniqueCategories); // Populate availableCategories
+
+    // Extract unique statuses
+    const uniqueStatuses: string[] = [
+      ...new Set(fetchedProducts.map((product) => product.status)),
+    ];
+    setStatus(uniqueStatuses); // Set the statuses dynamically
+    setavailableStatus(uniqueStatuses); // Populate availableStatus
+
+    } catch (error) {
+    console.error('Error fetching products:', error);
+    } finally {
+    setIsLoading(false);
+    }
+  };
   
   const applyFilters = () => {
     let filtered = [...products]; // Start with all products
@@ -92,6 +124,9 @@ const Explore = () => {
     // Filter by categories
     if (categories.length > 0) {
       filtered = filtered.filter((product) => categories.includes(product.categoryName));
+    }
+    if (status.length > 0) {
+      filtered = filtered.filter((product) => status.includes(product.status));
     }
   
     // Filter by price range (assuming price is part of the product data)
@@ -126,79 +161,103 @@ const Explore = () => {
 
       {/* Filter Drawer */}
       <Drawer isOpen={showDrawer} onClose={() => setShowDrawer(false)}>
-  <DrawerBackdrop />
-  <DrawerContent className="flex flex-col h-full w-[280px] md:w-[400px] px-5 pt-6 pb-4 bg-white rounded-t-2xl">
-    
-    {/* Header */}
-    <DrawerHeader className="mt-20">
-      <Heading size="lg" className="text-xl font-semibold text-gray-900">
-        Filters
+      <DrawerBackdrop />
+      <DrawerContent className="flex flex-col h-full w-[280px] md:w-[400px] px-5 pt-6 pb-4 bg-white rounded-t-2xl">
+        
+        {/* Header */}
+        <DrawerHeader className="mt-20">
+      <Heading size="lg" className="text-2xl font-bold text-gray-900">
+        FILTERS
       </Heading>
-    </DrawerHeader>
+        </DrawerHeader>
 
-    {/* Scrollable Filter Body */}
-    <DrawerBody className="flex-1 overflow-y-auto pr-1 space-y-6">
+        {/* Scrollable Filter Body */}
+        <DrawerBody className="flex-1 overflow-y-auto pr-1 space-y-6">
       
       {/* Categories */}
       <VStack className='m-4'>
-        <Text className="text-base font-medium text-gray-800">Categories</Text>
+        <Text className="text-lg font-semibold text-gray-800">CATEGORIES</Text>
         <Divider className="my-2" />
         <CheckboxGroup value={categories} onChange={setCategories}>
           <VStack className="gap-3 mt-1 ml-1">
-            {availableCategories.map((category) => (
-              <Checkbox
-                key={category}
-                value={category}
-                size="sm"
-                className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-              >
-                <CheckboxIndicator className="text-white">
-                  <CheckboxIcon as={CheckIcon} />
-                </CheckboxIndicator>
-                <CheckboxLabel className="ml-2 text-sm text-gray-700">{category}</CheckboxLabel>
-              </Checkbox>
-            ))}
+        {availableCategories.map((category) => (
+          <Checkbox
+            key={category}
+            value={category}
+            size="md"
+            className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+          >
+            <CheckboxIndicator className="text-white">
+          <CheckboxIcon as={CheckIcon} />
+            </CheckboxIndicator>
+            <CheckboxLabel className="ml-2 text-base text-gray-700">{category}</CheckboxLabel>
+          </Checkbox>
+        ))}
+          </VStack>
+        </CheckboxGroup>
+      </VStack>
+
+      <VStack className='m-4'>
+        <Text className="text-lg font-semibold text-gray-800">STATUS</Text>
+        <Divider className="my-2" />
+        <CheckboxGroup value={status} onChange={setStatus}>
+          <VStack className="gap-3 mt-1 ml-1">
+        {availableStatus.map((statusOption) => (
+          <Checkbox
+        key={statusOption}
+        value={statusOption}
+        size="md"
+        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+          >
+        <CheckboxIndicator className="text-white">
+          <CheckboxIcon as={CheckIcon} />
+        </CheckboxIndicator>
+        <CheckboxLabel className="ml-2 text-base text-gray-700">{statusOption}</CheckboxLabel>
+          </Checkbox>
+        ))}
           </VStack>
         </CheckboxGroup>
       </VStack>
 
       {/* Price Range */}
       <VStack className='m-4'>
-        <Text className="text-base font-medium text-gray-800">Price Range</Text>
+        <Text className="text-lg font-semibold text-gray-800">PRICE RANGE</Text>
         <Divider className="my-2" />
         <VStack className="pt-4 pr-4 ml-1">
           <Slider
-            value={priceRange}
-            onChange={setPriceRange}
-            size="sm"
-            orientation="horizontal"
-            minValue={0}
-            maxValue={10000}
+        value={priceRange}
+        onChange={setPriceRange}
+        size="md"
+        orientation="horizontal"
+        minValue={0}
+        maxValue={10000}
           >
-            <SliderTrack>
-              <SliderFilledTrack />
-            </SliderTrack>
-            <SliderThumb />
+        <SliderTrack>
+          <SliderFilledTrack />
+        </SliderTrack>
+        <SliderThumb />
           </Slider>
         </VStack>
         <HStack className="justify-between pt-2 px-1">
-          <Text size="sm" className="text-gray-500">0</Text>
-          <Text size="sm" className="text-gray-500">10,000</Text>
+          <Text size="md" className="text-gray-500">0</Text>
+          <Text size="md" className="text-gray-500">10,000</Text>
         </HStack>
       </VStack>
-    </DrawerBody>
 
-    {/* Footer Buttons */}
-    <Box className="space-y-2 px-1 pt-3 border-t border-gray-200">
+         
+        </DrawerBody>
+
+        {/* Footer Buttons */}
+        <Box className="space-y-2 px-1 pt-3 border-t border-gray-200">
       <Button
         onPress={applyFilters}
         className="w-full bg-blue-600 hover:bg-blue-700 text-white mb-4"
       >
-        <ButtonText>Apply Filters</ButtonText>
+        <ButtonText className="text-lg font-semibold">APPLY FILTERS</ButtonText>
       </Button>
       <Button
         variant="outline"
-        size="sm"
+        size="md"
         onPress={() => {
           setCategories([]);
           setBrands([]);
@@ -207,11 +266,11 @@ const Explore = () => {
         }}
         className="w-full border-gray-300 text-gray-700" 
       >
-        <ButtonText>Clear All</ButtonText>
+        <ButtonText className="text-lg font-semibold">CLEAR ALL</ButtonText>
       </Button>
-    </Box>
-  </DrawerContent>
-</Drawer>
+        </Box>
+      </DrawerContent>
+    </Drawer>
 
 
 
@@ -252,8 +311,8 @@ const Explore = () => {
                         )}
                       </TableData>
                       <TableData className="border border-gray-200 px-4 py-2">
-                        <Badge size="sm" action="success" className="w-fit justify-center">
-                          <BadgeText>Active</BadgeText>
+                        <Badge size="sm" action={product.status === 'Active' ? 'success' : 'warning'} className="w-fit justify-center">
+                          <BadgeText>{product.status}</BadgeText>
                         </Badge>
                       </TableData>
                     </TableRow>
@@ -270,3 +329,5 @@ const Explore = () => {
 };
 
 export default Explore;
+
+
