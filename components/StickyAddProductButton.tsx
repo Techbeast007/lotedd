@@ -15,7 +15,7 @@ const StickyAddProductButton = () => {
     <Box
       className="absolute bottom-5 right-5"
       style={{
-        position: 'fixed',
+        position: 'absolute',
         bottom: 20,
         right: 20,
         zIndex: 1000,

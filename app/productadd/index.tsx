@@ -3,20 +3,42 @@ import React, { useEffect, useState } from 'react';
 
 import { categories } from '@/assets/categories';
 import { Box } from '@/components/ui/box';
-import { FlatList } from '@/components/ui/flat-list';
+import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
 import { HStack } from '@/components/ui/hstack';
 import { Input, InputField, InputSlot } from '@/components/ui/input';
+import { ScrollView } from '@/components/ui/scroll-view';
+import {
+  Select,
+  SelectBackdrop,
+  SelectContent,
+  SelectDragIndicator,
+  SelectDragIndicatorWrapper,
+  SelectIcon,
+  SelectInput,
+  SelectItem,
+  SelectPortal,
+  SelectTrigger,
+} from "@/components/ui/select";
+import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 import storage from '@react-native-firebase/storage'; // Firebase Storage
 import * as ImagePicker from 'expo-image-picker';
-import { Image, TouchableOpacity } from 'react-native';
+import { ChevronDownIcon } from 'lucide-react-native'; // Importing the icon for dropdown
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableOpacity
+} from 'react-native';
 import uuid from 'react-native-uuid'; // For generating unique SKU-ID
+
 
 const ProductAdd = () => {
     const [productName, setProductName] = useState('');
+    const [isLoading, setIsLoading] = useState(false); // Add isLoading state
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
     const [filteredCategories, setFilteredCategories] = useState(categories);
@@ -24,6 +46,32 @@ const ProductAdd = () => {
     const [videos, setVideos] = useState<string[]>([]);
     const [sellerId, setSellerId] = useState('');
     const [showCategories, setShowCategories] = useState(false);
+    const [description, setDescription] = useState(''); // New state for description
+    const [measurements, setMeasurements] = useState(''); // New state for measurements
+    const [brand, setBrand] = useState(''); // New state for brand
+    const [shortDescription, setShortDescription] = useState(''); // New state for short description
+    const [basePrice, setBasePrice] = useState(''); // New state for base price
+    const [size, setSize] = useState(''); // New state for size
+    const [discountPrice, setDiscountPrice] = useState(''); // New state for discount price
+    const [stockQuantity, setStockQuantity] = useState(''); // New state for stock quantity
+    const [weight, setWeight] = useState(''); // New state for weight
+    const [dimensions, setDimensions] = useState(''); // New state for dimensions
+    const [color, setColor] = useState(''); // New state for color
+    const [status, setStatus] = useState('live'); // New state for status
+    const [featuredImage, setFeaturedImage] = useState<string | null>(null);
+
+
+    const handleSelectFeaturedImage = async () => {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1,
+      });
+    
+      if (!result.canceled) {
+        const selectedImage = result.assets[0].uri;
+        setFeaturedImage(selectedImage); // Set the selected image as the featured image
+      }
+    };
   
     // Fetch seller ID from local storage
     const fetchSellerId = async () => {
@@ -61,54 +109,80 @@ const ProductAdd = () => {
         console.log(`File uploaded. Download URL: ${downloadURL}`);
         return downloadURL;
       };
+
+
+      const resetForm = () => {
+        setProductName('');
+        setDescription('');
+        setMeasurements('');
+        setSelectedCategory(null);
+        setImages([]);
+        setVideos([]);
+        setBrand('');
+        setShortDescription('');
+        setBasePrice('');
+        setDiscountPrice('');
+        setStockQuantity('');
+        setSize('');
+        setColor('');
+        setWeight('');
+        setDimensions('');
+      };
   
-    const handleAddProduct = async () => {
-        console.log('Add Product button clicked');
-        console.log('Product Name:', productName);
-        console.log('Selected Category:', selectedCategory);
-        console.log('Seller ID:', sellerId);
-      
-        if (!productName || !selectedCategory || !sellerId) {
-          alert('Please fill all fields');
+      const handleAddProduct = async () => {
+        if (!featuredImage) {
+          alert('Please upload a featured image.');
           return;
         }
       
-        const skuId = `SKU-${uuid.v4().slice(0, 8).toUpperCase()}`; // Generate unique SKU-ID
+        setIsLoading(true);
       
         try {
-          console.log('Uploading images...');
+          // Upload featured image
+          const featuredImageUrl = await uploadFileToStorage(featuredImage, 'featured-images');
+      
+          // Upload other images
           const imageUrls = await Promise.all(
             images.map((uri) => uploadFileToStorage(uri, 'images'))
           );
-          console.log('Image URLs:', imageUrls);
       
-          console.log('Uploading videos...');
+          // Upload videos
           const videoUrls = await Promise.all(
             videos.map((uri) => uploadFileToStorage(uri, 'videos'))
           );
-          console.log('Video URLs:', videoUrls);
       
-          console.log('Saving product to Firestore...');
+          // Save product to Firestore
           await firestore().collection('products').add({
             name: productName,
-            categoryId: selectedCategory.id,
-            categoryName: selectedCategory.name,
-            sellerId: sellerId, // Save the seller ID
+            description: description,
+            measurements: measurements || '',
+            categoryId: selectedCategory?.id || '',
+            categoryName: selectedCategory?.name || '',
+            sellerId: sellerId,
+            featuredImage: featuredImageUrl, // Add featured image URL
             images: imageUrls,
-            videos: videoUrls,
-            skuId: skuId, // Save the unique SKU-ID
+            videos: videoUrls || [],
+            skuId: `SKU-${uuid.v4().slice(0, 8).toUpperCase()}`,
+            brand: brand || '',
+            status: status || 'live',
+            shortDescription: shortDescription || '',
+            basePrice: parseFloat(basePrice) || 0,
+            discountPrice: parseFloat(discountPrice) || 0,
+            stockQuantity: parseInt(stockQuantity) || 0,
+            size: size || '',
+            color: color || '',
+            weight: parseFloat(weight) || 0,
+            dimensions: dimensions || '',
             createdAt: firestore.FieldValue.serverTimestamp(),
           });
       
-          console.log('Product saved to Firestore successfully.');
-          alert(`Product added successfully! SKU-ID: ${skuId}`);
-          setProductName('');
-          setSelectedCategory(null);
-          setImages([]);
-          setVideos([]);
+          alert('Product added successfully!');
+          resetForm();
         } catch (error) {
           console.error('Error saving product:', error);
-          alert(`Failed to add product: ${error.message}`);
+          alert('Failed to add product.');
+        } finally {
+          setIsLoading(false);
         }
       };
 
@@ -159,110 +233,280 @@ const handleSelectImages = async () => {
     }, []);
   
     return (
-      <VStack className="flex-1 bg-gray-50">
-        {/* Hero Section */}
-        <Box
-          className="h-40 bg-blue-100 rounded-b-lg flex items-center justify-center"
+        <GluestackUIProvider>
+          <KeyboardAvoidingView
+    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    style={{ flex: 1 }}
+    keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0} // Adjust offset for iOS
+  >
+          <ScrollView
+            className="flex-1 bg-white"
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: 0, // give a bit of padding manually
+              backgroundColor: 'white',
+            }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <VStack className="flex-1 bg-gray-50">
+              {/* Hero Section */}
+              <Box
+          className="h-40 bg-blue-100 rounded-b-lg flex items-left justify-end p-6"
           style={{
             backgroundColor: '#E0F7FA', // Light blue color
           }}
-        >
-          <Text className="text-3xl font-bold text-blue-600">Add Product</Text>
-        </Box>
-  
-        {/* Form Section */}
-        <VStack className="p-6 space-y-6">
-          {/* Product Name Input */}
-          <Box>
-            <Text className="text-lg font-semibold mb-2">Product Name</Text>
+              >
+          <Text className="text-3xl font-bold text-black-600 text-left">Add Product</Text>
+              </Box>
+
+              {/* Form Section */}
+              <VStack className="p-8 space-y-8">
+          {/* Basic Information */}
+          {/* Product Name */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Product Name</Text>
             <Input>
               <InputSlot className="pl-3">
                 <InputField
-                  placeholder="Enter product name"
-                  value={productName}
-                  onChangeText={setProductName}
+            placeholder="Enter product name"
+            value={productName}
+            onChangeText={setProductName}
                 />
               </InputSlot>
             </Input>
           </Box>
-  
-          {/* Category Search Input */}
-          <Box>
-            <Text className="text-lg font-semibold mb-2">Category</Text>
+
+          {/* Brand/Manufacturer */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Brand/Manufacturer</Text>
             <Input>
               <InputSlot className="pl-3">
                 <InputField
-                  placeholder="Search categories"
-                  value={searchQuery}
-                  onFocus={() => setShowCategories(true)} // Show dropdown on focus
-                  onChangeText={handleSearch}
+            placeholder="Enter brand/manufacturer"
+            value={brand}
+            onChangeText={setBrand}
                 />
               </InputSlot>
             </Input>
-  
-            {/* Dropdown for Filtered Categories */}
-            {showCategories && filteredCategories.length > 0 && (
-              <Box className="border border-gray-300 rounded-md mt-2 bg-white max-h-40 overflow-y-auto">
-                <FlatList
-                  data={filteredCategories}
-                  keyExtractor={(item) => item.id}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      className="p-2 border-b border-gray-200"
-                      onPress={() => handleSelectCategory(item)}
-                    >
-                      <Text>{item.name}</Text>
-                    </TouchableOpacity>
-                  )}
+          </Box>
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Category</Text>
+            <Input>
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Search categories"
+            value={searchQuery}
+            onFocus={() => setShowCategories(true)} // Show dropdown on focus
+            onChangeText={handleSearch}
                 />
+              </InputSlot>
+            </Input>
+
+            {/* Dropdown for Filtered Categories */}
+            {showCategories && (
+              <Box className="border border-gray-300 rounded-md mt-4 bg-white max-h-40 overflow-hidden">
+                <ScrollView className="max-h-40" nestedScrollEnabled={true}>
+            {filteredCategories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                className="p-3 border-b border-gray-200"
+                onPress={() => handleSelectCategory(category)}
+              >
+                <Text>{category.name}</Text>
+              </TouchableOpacity>
+            ))}
+                </ScrollView>
               </Box>
             )}
           </Box>
-  
-          {/* Image Upload Section */}
-          <Box>
-            <Text className="text-lg font-semibold mb-2">Upload Images</Text>
+
+          {/* Descriptions */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Descriptions</Text>
+            <Input className="mb-4">
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter short description"
+            value={shortDescription}
+            onChangeText={setShortDescription}
+                />
+              </InputSlot>
+            </Input>
+            <Input>
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter long description"
+            value={description}
+            onChangeText={setDescription}
+                />
+              </InputSlot>
+            </Input>
+          </Box>
+
+          {/* Media */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Media</Text>
             <TouchableOpacity
-              className="border-dashed border-2 border-gray-300 rounded-md p-4 flex items-center justify-center"
+              className="border-dashed border-2 border-gray-300 rounded-md p-6 flex items-center justify-center"
               onPress={handleSelectImages}
             >
               <Text className="text-gray-500">Upload Images (Max: 5)</Text>
             </TouchableOpacity>
-            <HStack className="space-x-2 mt-2">
+            <HStack className="space-x-4 mt-4">
               {images.map((uri, index) => (
                 <Image
-                  key={index}
-                  source={{ uri }}
-                  style={{ width: 50, height: 50, borderRadius: 8 }}
+            key={index}
+            source={{ uri }}
+            style={{ width: 60, height: 60, borderRadius: 8 }}
                 />
               ))}
             </HStack>
-          </Box>
-  
-          {/* Video Upload Section */}
-          <Box>
-            <Text className="text-lg font-semibold mb-2">Upload Videos</Text>
             <TouchableOpacity
-              className="border-dashed border-2 border-gray-300 rounded-md p-4 flex items-center justify-center"
+              className="border-dashed border-2 border-gray-300 rounded-md p-6 flex items-center justify-center"
               onPress={handleSelectVideos}
             >
               <Text className="text-gray-500">Upload Videos (Max: 2)</Text>
             </TouchableOpacity>
-            <HStack className="space-x-2 mt-2">
+            <HStack className="space-x-4 mt-4">
               {videos.map((uri, index) => (
-                <Box key={index} className="w-12 h-12 bg-gray-300 rounded-md">
-                  <Text className="text-center text-xs">Video {index + 1}</Text>
+                <Box key={index} className="w-14 h-14 bg-gray-300 rounded-md flex items-center justify-center">
+            <Text className="text-center text-xs">Video {index + 1}</Text>
                 </Box>
               ))}
             </HStack>
           </Box>
-  
+
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Featured Image</Text>
+            <TouchableOpacity
+              className="border-dashed border-2 border-gray-300 rounded-md p-6 flex items-center justify-center"
+              onPress={handleSelectFeaturedImage}
+            >
+              <Text className="text-gray-500">Upload Featured Image</Text>
+            </TouchableOpacity>
+            {featuredImage && (
+              <Image
+                source={{ uri: featuredImage }}
+                style={{ width: 100, height: 100, borderRadius: 8, marginTop: 10 }}
+              />
+            )}
+          </Box>
+
+          {/* Pricing & Availability */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Pricing & Availability</Text>
+            <VStack className="space-y-4">
+              <Input className="mb-4">
+                <InputSlot className="pl-3">
+            <InputField
+              placeholder="Enter base price"
+              value={basePrice}
+              onChangeText={setBasePrice}
+            />
+                </InputSlot>
+              </Input>
+              <Input className="mb-4">
+                <InputSlot>
+            <InputField
+              placeholder="Enter discount price (if any)"
+              value={discountPrice}
+              onChangeText={setDiscountPrice}
+            />
+                </InputSlot>
+              </Input>
+              <Input className="mb-4">
+                <InputSlot className="pl-3">
+            <InputField
+              placeholder="Enter stock quantity"
+              value={stockQuantity}
+              onChangeText={setStockQuantity}
+            />
+                </InputSlot>
+              </Input>
+            </VStack>
+          </Box>
+
+          {/* Variants */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Variants</Text>
+            <Input className="mb-4">
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter size/weight"
+            value={size}
+            onChangeText={setSize}
+                />
+              </InputSlot>
+            </Input>
+            <Input className="mb-4">
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter color/material"
+            value={color}
+            onChangeText={setColor}
+                />
+              </InputSlot>
+            </Input>
+          </Box>
+
+          {/* Logistics */}
+          <Box className="mb-7 space-y-8">
+            <Text className="text-xl font-bold mb-4">Logistics</Text>
+            <Input className="mb-4">
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter weight"
+            value={weight}
+            onChangeText={setWeight}
+                />
+              </InputSlot>
+            </Input>
+            <Input className="mb-4">
+              <InputSlot className="pl-3">
+                <InputField
+            placeholder="Enter dimensions (L x W x H)"
+            value={dimensions}
+            onChangeText={setDimensions}
+                />
+              </InputSlot>
+            </Input>
+            <Box className="mb-4"></Box>
+            <Text className="text-xl font-bold mb-4">Status</Text>
+            <Box>
+              <Text className="text-lg font-medium mb-2">Status</Text>
+              <Select onValueChange={setStatus} className="w-full">
+                <SelectTrigger variant="outline" size="lg">
+            <SelectInput placeholder="Select status" className="w-[90%] h-16" />
+            <SelectIcon className="mr-3" as={ChevronDownIcon} />
+                </SelectTrigger>
+                <SelectPortal>
+            <SelectBackdrop />
+            <SelectContent>
+              <SelectDragIndicatorWrapper>
+                <SelectDragIndicator />
+              </SelectDragIndicatorWrapper>
+              <SelectItem label="Live" value="live" />
+              <SelectItem label="Draft" value="draft" />
+              <SelectItem label="Paused" value="paused" />
+            </SelectContent>
+                </SelectPortal>
+              </Select>
+            </Box>
+          </Box>
+
           {/* Add Product Button */}
-          <Button onPress={handleAddProduct} className="mt-4">
-            <ButtonText>Add Product</ButtonText>
+          <Button onPress={handleAddProduct} className="mt-6" disabled={isLoading}>
+            {isLoading ? (
+              <Spinner className="mr-2" />
+            ) : (
+              <ButtonText>Add Product</ButtonText>
+            )}
           </Button>
-        </VStack>
-      </VStack>
+              </VStack>
+            </VStack>
+          </ScrollView></KeyboardAvoidingView>
+        </GluestackUIProvider>
     );
   };
   
