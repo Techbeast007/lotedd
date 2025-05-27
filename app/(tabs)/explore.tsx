@@ -13,7 +13,7 @@ import { Table, TableBody, TableData, TableHead, TableHeader, TableRow } from '@
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, getFirestore, query, where, QueryConstraint, limit as firestoreLimit  } from '@react-native-firebase/firestore';
+import { QueryConstraint, collection, limit as firestoreLimit, getDocs, getFirestore, query, where } from '@react-native-firebase/firestore';
 import { CheckIcon, SlidersHorizontal } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 
