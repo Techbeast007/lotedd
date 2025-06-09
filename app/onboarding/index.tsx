@@ -8,6 +8,7 @@ import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Text, TouchableOpacity } from 'react-native';
 
@@ -17,6 +18,7 @@ export default function OnboardingScreen() {
   const [email, setEmail] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [role, setRole] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     // Fetch the role from AsyncStorage
@@ -61,11 +63,18 @@ export default function OnboardingScreen() {
         userData.gstNumber = gstNumber;
       }
 
-      await firestore().collection('users').doc(uid).update(userData);
+      // Use set with merge option instead of update to handle non-existent documents
+      await firestore().collection('users').doc(uid).set(userData, { merge: true });
       await AsyncStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
 
       console.log('User data saved successfully:', userData);
-      Alert.alert('Success', 'Profile updated successfully!');
+      
+      // Navigate to appropriate tab group based on user role
+      if (role === 'buyer') {
+        router.push('/(buyer)');
+      } else {
+        router.push('/(tabs)');
+      }
     } catch (error) {
       console.error('Error saving user data:', error);
       Alert.alert('Error', 'Failed to save profile. Please try again.');

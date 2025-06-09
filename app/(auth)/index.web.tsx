@@ -85,6 +85,9 @@ export default function AuthScreen() {
   
       if (userExists) {
         const { primaryRole, secondaryRole } = await handleExistingUserRoles(user.uid, role as string);
+        
+        // Set the current role to what the user is logging in as
+        const currentRole = role as string;
   
         // Save the full user object and roles in local storage
         const userData = {
@@ -92,14 +95,24 @@ export default function AuthScreen() {
           phoneNumber: user.phoneNumber,
           primaryRole,
           secondaryRole: secondaryRole || null,
+          currentRole: currentRole, // Add current role to user data
         };
         localStorage.setItem('user', JSON.stringify(userData));
         localStorage.setItem('primaryRole', primaryRole);
         localStorage.setItem('secondaryRole', secondaryRole || '');
+        localStorage.setItem('currentRole', currentRole); // Save current role separately
   
         showToast('Login successful!', 'success');
-        router.push('/(tabs)');
+        
+        // Redirect based on the current role
+        if (currentRole === 'buyer') {
+          router.push('/(buyer)/home');
+        } else {
+          router.push('/(tabs)');
+        }
       } else {
+        // This is a new user
+        const currentRole = role as string;
         await saveUserWithRole(user.uid, role as string, user.phoneNumber);
   
         // Save the full user object and primary role in local storage
@@ -108,10 +121,12 @@ export default function AuthScreen() {
           phoneNumber: user.phoneNumber,
           primaryRole: role,
           secondaryRole: null,
+          currentRole: currentRole, // Add current role for new users
         };
         localStorage.setItem('user', JSON.stringify(userData));
         localStorage.setItem('primaryRole', role as string);
         localStorage.setItem('secondaryRole', '');
+        localStorage.setItem('currentRole', currentRole); // Save current role for new users
   
         showToast('Welcome! Redirecting to onboarding.', 'success');
         router.push('/onboarding');

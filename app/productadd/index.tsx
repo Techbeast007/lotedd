@@ -75,11 +75,19 @@ const ProductAdd = () => {
   
     // Fetch seller ID from local storage
     const fetchSellerId = async () => {
-      const storedSellerId = await AsyncStorage.getItem('user');
-      if (storedSellerId) {
-        setSellerId(storedSellerId);
-      } else {
-        alert('Seller ID not found. Please log in.');
+      try {
+        const userDataString = await AsyncStorage.getItem('user');
+        if (userDataString) {
+          // Parse the user data and extract the uid
+          const userData = JSON.parse(userDataString);
+          setSellerId(userData.uid); // Set just the user ID, not the entire object
+          console.log('Seller ID set:', userData.uid);
+        } else {
+          alert('Seller ID not found. Please log in.');
+        }
+      } catch (error) {
+        console.error('Error fetching seller ID:', error);
+        alert('Error retrieving your account information. Please log in again.');
       }
     };
   

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Bell, Home, Search, User } from 'lucide-react-native';
+import { Home, Search, ShoppingBag, User } from 'lucide-react-native';
 import React from 'react';
 import { View } from 'react-native';
 
@@ -8,7 +8,7 @@ import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-export default function TabLayout() {
+export default function BuyerTabLayout() {
   const colorScheme = useColorScheme();
 
   return (
@@ -19,7 +19,7 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
         tabBarStyle: {
-          position: 'fixed',
+          position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
@@ -44,9 +44,11 @@ export default function TabLayout() {
         tabBarItemStyle: {
           height: '100%',
         },
-      }}>
+      }}
+      initialRouteName="home"
+    >
       <Tabs.Screen
-        name="index"
+        name="home"
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
@@ -63,9 +65,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="shop"
         options={{
-          title: 'Explore',
+          title: 'Shop',
           tabBarIcon: ({ color, focused }) => (
             <View style={{ 
               alignItems: 'center', 
@@ -80,9 +82,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="updates"
+        name="orders"
         options={{
-          title: 'Updates',
+          title: 'Orders',
           tabBarIcon: ({ color, focused }) => (
             <View style={{ 
               alignItems: 'center', 
@@ -91,13 +93,13 @@ export default function TabLayout() {
               padding: 10,
               borderRadius: 20,
             }}>
-              <Bell size={24} color={color} />
+              <ShoppingBag size={24} color={color} />
             </View>
           ),
         }}
       />
       <Tabs.Screen
-        name="profilesection"
+        name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, focused }) => (

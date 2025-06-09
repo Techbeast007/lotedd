@@ -8,7 +8,7 @@ import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
-import { doc, getFirestore, updateDoc } from 'firebase/firestore';
+import { doc, getFirestore, setDoc } from 'firebase/firestore';
 import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useState } from 'react';
 
@@ -67,8 +67,8 @@ export default function OnboardingScreen() {
         userData.gstNumber = gstNumber;
       }
 
-      // Update Firestore
-      await updateDoc(doc(db, 'users', user.uid), userData);
+      // Use setDoc with merge option instead of updateDoc to handle non-existent documents
+      await setDoc(doc(db, 'users', user.uid), userData, { merge: true });
       await localStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
 
       console.log('User data saved successfully:', userData);
