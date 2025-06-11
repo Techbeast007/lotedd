@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Search, ShoppingBag, User } from 'lucide-react-native';
+import { Home, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
 import React from 'react';
 import { View } from 'react-native';
 
@@ -94,6 +94,23 @@ export default function BuyerTabLayout() {
               borderRadius: 20,
             }}>
               <ShoppingBag size={24} color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: 'Cart',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              backgroundColor: focused ? `${color}20` : 'transparent',
+              padding: 10,
+              borderRadius: 20,
+            }}>
+              <ShoppingCart size={24} color={color} />
             </View>
           ),
         }}

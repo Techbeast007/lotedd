@@ -2,10 +2,11 @@ import { Box } from '@/components/ui/box';
 import { HStack } from '@/components/ui/hstack';
 import { Image } from '@/components/ui/image';
 import { Text } from '@/components/ui/text';
+import { useCart } from '@/services/context/CartContext';
 import { Product } from '@/services/productService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Eye, Heart, MessageCircle, Star } from 'lucide-react-native';
+import { Eye, Heart, MessageCircle, ShoppingCart, Star } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -19,9 +20,11 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false }) => {
   const router = useRouter();
+  const { addToCart } = useCart();
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
+  const [addingToCart, setAddingToCart] = useState(false);
   
   // Enhanced debugging: Log complete product details to identify issues
   useEffect(() => {console.log(product)
@@ -63,6 +66,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false 
 
   const toggleFavorite = () => {
     setIsFavorite(!isFavorite);
+  };
+
+  const handleAddToCart = () => {
+    setAddingToCart(true);
+    setTimeout(() => {
+      addToCart(product);
+      setAddingToCart(false);
+    }, 300);
   };
 
   const renderStars = (rating: number) => {
@@ -184,6 +195,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false 
               >
                 <Eye size={14} color="#3B82F6" />
                 <Text style={styles.viewButtonText}>View</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.cartButton]} 
+                onPress={handleAddToCart}
+                disabled={addingToCart}
+              >
+                {addingToCart ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <ShoppingCart size={14} color="#FFFFFF" />
+                    <Text style={styles.chatButtonText}>Add</Text>
+                  </>
+                )}
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -357,7 +383,7 @@ const styles = StyleSheet.create({
   },
   viewButton: {
     backgroundColor: '#EBF5FF',
-    marginRight: 6,
+    marginRight: 4,
   },
   viewButtonText: {
     color: '#3B82F6',
@@ -365,9 +391,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 4,
   },
+  cartButton: {
+    backgroundColor: '#10B981',
+    marginHorizontal: 4,
+  },
   chatButton: {
     backgroundColor: '#3B82F6',
-    marginLeft: 6,
+    marginLeft: 4,
   },
   chatButtonText: {
     color: 'white',
