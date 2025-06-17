@@ -1,41 +1,88 @@
 import { Tabs } from 'expo-router';
 import { Home, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View } from 'react-native';
 
-import { HapticTab } from '@/components/HapticTab';
-import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function BuyerTabLayout() {
   const colorScheme = useColorScheme();
+  
+  // Memoize tab bar icons to prevent unnecessary re-renders
+  const renderIcon = useMemo(() => ({
+    home: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <Home size={24} color={color} />
+      </View>
+    ),
+    shop: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <Search size={24} color={color} />
+      </View>
+    ),
+    orders: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <ShoppingBag size={24} color={color} />
+      </View>
+    ),
+    cart: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <ShoppingCart size={24} color={color} />
+      </View>
+    ),
+    profile: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <User size={24} color={color} />
+      </View>
+    )
+  }), []);
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
         tabBarStyle: {
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          elevation: 10,
-          height: 70,
-          backgroundColor: 'rgba(255, 255, 255, 0.97)',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 5,
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(0, 0, 0, 0.05)',
+          backgroundColor: Colors[colorScheme]?.background,
+          borderTopWidth: 0,
+          borderTopColor: 'transparent',
+          elevation: 0,
+          shadowOpacity: 0,
+          height: 60,
+          paddingBottom: 8,
         },
-        tabBarIconStyle: {
-          marginTop: 5,
-        },
+        header: () => null,
+        tabBarActiveTintColor: '#3B82F6',
+        tabBarInactiveTintColor: '#6B7280',
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
@@ -44,6 +91,9 @@ export default function BuyerTabLayout() {
         tabBarItemStyle: {
           height: '100%',
         },
+        // Performance optimizations
+        freezeOnBlur: true,
+        lazy: true,
       }}
       initialRouteName="home"
     >
@@ -51,85 +101,35 @@ export default function BuyerTabLayout() {
         name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              backgroundColor: focused ? `${color}20` : 'transparent',
-              padding: 10,
-              borderRadius: 20,
-            }}>
-              <Home size={24} color={color} />
-            </View>
-          ),
+          tabBarIcon: ({ color, focused }) => renderIcon.home(color, focused),
         }}
       />
       <Tabs.Screen
         name="shop"
         options={{
           title: 'Shop',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              backgroundColor: focused ? `${color}20` : 'transparent',
-              padding: 10,
-              borderRadius: 20,
-            }}>
-              <Search size={24} color={color} />
-            </View>
-          ),
+          tabBarIcon: ({ color, focused }) => renderIcon.shop(color, focused),
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
           title: 'Orders',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              backgroundColor: focused ? `${color}20` : 'transparent',
-              padding: 10,
-              borderRadius: 20,
-            }}>
-              <ShoppingBag size={24} color={color} />
-            </View>
-          ),
+          tabBarIcon: ({ color, focused }) => renderIcon.orders(color, focused),
         }}
       />
       <Tabs.Screen
         name="cart"
         options={{
           title: 'Cart',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              backgroundColor: focused ? `${color}20` : 'transparent',
-              padding: 10,
-              borderRadius: 20,
-            }}>
-              <ShoppingCart size={24} color={color} />
-            </View>
-          ),
+          tabBarIcon: ({ color, focused }) => renderIcon.cart(color, focused),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              backgroundColor: focused ? `${color}20` : 'transparent',
-              padding: 10,
-              borderRadius: 20,
-            }}>
-              <User size={24} color={color} />
-            </View>
-          ),
+          tabBarIcon: ({ color, focused }) => renderIcon.profile(color, focused),
         }}
       />
     </Tabs>

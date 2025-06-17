@@ -7,7 +7,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, getFirestore, limit, query, where } from '@react-native-firebase/firestore';
+import { collection, getDocs, getFirestore, query, where } from '@react-native-firebase/firestore';
 import { useRouter } from 'expo-router';
 import { CheckCircle2, Circle, EditIcon, Filter } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
@@ -48,7 +48,7 @@ const Explore = () => {
     fetchProducts(20);
   }, []);
 
-  const fetchProducts = async (limitCount: number = 20) => {
+  const fetchProducts = async (limitCount: number = 100) => {
     try {
       setIsLoading(true);
       const firestore = getFirestore();
@@ -63,9 +63,10 @@ const Explore = () => {
       
       // Parse the user data and get the sellerId (uid)
       const userData = JSON.parse(userDataString);
-      const sellerId = userData.uid; // Extract just the UID
+      const sellerId = userData.uid;
       
       console.log('Fetching products for seller ID:', sellerId);
+      console.log('Full user data:', userData);
       
       if (!sellerId) {
         console.error('Seller ID not found in user data.');
@@ -73,70 +74,86 @@ const Explore = () => {
         return;
       }
       
-      // First try with the simple sellerId field
       const productsRef = collection(firestore, 'products');
-      const q = query(
-        productsRef,
-        where('sellerId', '==', sellerId),
-        limit(limitCount)
-      );
+      let allFetchedProducts: Product[] = [];
       
-      console.log('Executing Firestore query...');
-      const querySnapshot = await getDocs(q);
-      console.log(`Found ${querySnapshot.size} products with direct sellerId match`);
-      
-      let fetchedProducts = querySnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          skuId: data.skuId || '',
-          name: data.name || '',
-          categoryName: data.categoryName || '',
-          description: data.description || '',
-          measurements: data.measurements || '',
-          images: data.images || [],
-          basePrice: data.basePrice || 0,
-          brand: data.brand || '',
-          categoryId: data.categoryId || '',
-          color: data.color || '',
-          createdAt: data.createdAt || null,
-          discountPrice: data.discountPrice || 0,
-          featuredImage: data.featuredImage || '',
-          shortDescription: data.shortDescription || '',
-          size: data.size || '',
-          status: data.status || '',
-          stockQuantity: data.stockQuantity || 0,
-          videos: data.videos || [],
-          weight: data.weight || 0,
-        };
-      });
-      
-      // If no products found, try checking for products that might have stored
-      // the seller ID in a different way
-      if (fetchedProducts.length === 0) {
-        console.log('No products found with direct sellerId match, trying alternatives...');
-        
-        // Try to get all products and filter manually
-        const allProductsQuery = query(
+      try {
+        // Method 1: Query with just the UID (newer products)
+        console.log('Trying method 1: Direct UID match...');
+        const q1 = query(
           productsRef,
-          limit(100) // Get more products to filter through
+          where('sellerId', '==', sellerId)
         );
         
-        const allProductsSnapshot = await getDocs(allProductsQuery);
-        console.log(`Found ${allProductsSnapshot.size} total products to filter`);
+        const querySnapshot1 = await getDocs(q1);
+        console.log(`Method 1: Found ${querySnapshot1.size} products`);
         
-        // Filter products that might have the seller ID in a different format or field
-        const filteredProducts = allProductsSnapshot.docs
+        const newFormatProducts = querySnapshot1.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            skuId: data.skuId || '',
+            name: data.name || '',
+            categoryName: data.categoryName || '',
+            description: data.description || '',
+            measurements: data.measurements || '',
+            images: data.images || [],
+            status: data.status || 'Unknown',
+            basePrice: data.basePrice || 0,
+            discountPrice: data.discountPrice || 0,
+            stockQuantity: data.stockQuantity || 0,
+            featuredImage: data.featuredImage || '',
+            shortDescription: data.shortDescription || '',
+          } as Product;
+        });
+        
+        allFetchedProducts = [...allFetchedProducts, ...newFormatProducts];
+      } catch (error) {
+        console.error('Method 1 failed:', error);
+      }
+  
+      // Method 2: Manual search through all products to handle old format variations
+      console.log('Trying method 2: Manual search for old format...');
+      
+      try {
+        // Get all products and filter manually
+        const allProductsQuery = query(productsRef);
+        const allProductsSnapshot = await getDocs(allProductsQuery);
+        console.log(`Total products in database: ${allProductsSnapshot.size}`);
+        
+        const manuallyFilteredProducts = allProductsSnapshot.docs
           .filter(doc => {
             const data = doc.data();
-            // Check if any field contains the seller ID
-            return (
-              (data.sellerId && data.sellerId.includes(sellerId)) || 
-              (data.userId && data.userId === sellerId) ||
-              (data.ownerId && data.ownerId === sellerId) ||
-              (data.sellerUid && data.sellerUid === sellerId) ||
-              (data.createdBy && data.createdBy === sellerId)
-            );
+            const sellerIdField = data.sellerId;
+            
+            console.log(`Checking product ${doc.id}, sellerId type: ${typeof sellerIdField}`);
+            
+            if (!sellerIdField) return false;
+            
+            if (typeof sellerIdField === 'string') {
+              // Skip if already found in method 1 (direct UID match)
+              if (sellerIdField === sellerId) {
+                return false; // Already found in method 1
+              }
+              
+              // Check if it's a JSON string containing the UID
+              try {
+                const parsed = JSON.parse(sellerIdField);
+                if (parsed.uid === sellerId) {
+                  console.log(`JSON UID match found for product ${doc.id}`);
+                  console.log(`Stored sellerId: ${sellerIdField.substring(0, 100)}...`);
+                  return true;
+                }
+              } catch (parseError) {
+                // Not valid JSON, check if UID is contained in the string
+                if (sellerIdField.includes(sellerId)) {
+                  console.log(`String contains UID for product ${doc.id}`);
+                  return true;
+                }
+              }
+            }
+            
+            return false;
           })
           .map(doc => {
             const data = doc.data();
@@ -148,43 +165,108 @@ const Explore = () => {
               description: data.description || '',
               measurements: data.measurements || '',
               images: data.images || [],
+              status: data.status || 'Unknown',
               basePrice: data.basePrice || 0,
-              brand: data.brand || '',
-              categoryId: data.categoryId || '',
-              color: data.color || '',
-              createdAt: data.createdAt || null,
               discountPrice: data.discountPrice || 0,
+              stockQuantity: data.stockQuantity || 0,
               featuredImage: data.featuredImage || '',
               shortDescription: data.shortDescription || '',
-              size: data.size || '',
-              status: data.status || '',
-              stockQuantity: data.stockQuantity || 0,
-              videos: data.videos || [],
-              weight: data.weight || 0,
-            };
+            } as Product;
           });
-          
-        console.log(`Found ${filteredProducts.length} products after manual filtering`);
-        
-        // Combine the filtered products with any that matched directly
-        fetchedProducts = [...fetchedProducts, ...filteredProducts];
+  
+        console.log(`Manual filter found ${manuallyFilteredProducts.length} products`);
+        allFetchedProducts = [...allFetchedProducts, ...manuallyFilteredProducts];
+      } catch (error) {
+        console.error('Manual filtering failed:', error);
       }
+  
+      // Method 3: Try specific old format patterns (fallback)
+      if (allFetchedProducts.length === 0) {
+        console.log('Trying method 3: Specific old format patterns...');
+        
+        // Try different possible JSON string formats
+        const possibleFormats = [
+          JSON.stringify(userData),
+          JSON.stringify({
+            uid: userData.uid,
+            phoneNumber: userData.phoneNumber,
+            primaryRole: userData.primaryRole,
+            secondaryRole: userData.secondaryRole
+          }),
+          // Try with different property orders
+          JSON.stringify({
+            phoneNumber: userData.phoneNumber,
+            primaryRole: userData.primaryRole,
+            secondaryRole: userData.secondaryRole,
+            uid: userData.uid
+          })
+        ];
+  
+        for (const format of possibleFormats) {
+          try {
+            console.log(`Trying format: ${format.substring(0, 50)}...`);
+            const q = query(
+              productsRef,
+              where('sellerId', '==', format)
+            );
+            
+            const querySnapshot = await getDocs(q);
+            console.log(`Found ${querySnapshot.size} products with format`);
+            
+            if (querySnapshot.size > 0) {
+              const formatProducts = querySnapshot.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                  id: doc.id,
+                  skuId: data.skuId || '',
+                  name: data.name || '',
+                  categoryName: data.categoryName || '',
+                  description: data.description || '',
+                  measurements: data.measurements || '',
+                  images: data.images || [],
+                  status: data.status || 'Unknown',
+                  basePrice: data.basePrice || 0,
+                  discountPrice: data.discountPrice || 0,
+                  stockQuantity: data.stockQuantity || 0,
+                  featuredImage: data.featuredImage || '',
+                  shortDescription: data.shortDescription || '',
+                } as Product;
+              });
+              
+              allFetchedProducts = [...allFetchedProducts, ...formatProducts];
+              break; // Found products with this format, no need to try others
+            }
+          } catch (error) {
+            console.error(`Failed with format: ${format}`, error);
+          }
+        }
+      }
+  
+      // Remove duplicates based on product ID
+      const uniqueProducts = allFetchedProducts.filter((product, index, self) => 
+        index === self.findIndex(p => p.id === product.id)
+      );
+  
+      console.log(`Total unique products found: ${uniqueProducts.length}`);
       
-      console.log(`Total products to display: ${fetchedProducts.length}`);
-      setProducts(fetchedProducts);
-      setFilteredProducts(fetchedProducts);
-    
+      // Apply the limit here if needed
+      const finalProducts = limitCount > 0 ? uniqueProducts.slice(0, limitCount) : uniqueProducts;
+      
+      setProducts(finalProducts);
+      setFilteredProducts(finalProducts);
+  
       // Extract unique categories
       const uniqueCategories: string[] = [
-        ...new Set(fetchedProducts.map((product) => product.categoryName).filter(Boolean)),
+        ...new Set(finalProducts.map((product) => product.categoryName).filter(Boolean)),
       ];
       setAvailableCategories(uniqueCategories);
-    
+  
       // Extract unique statuses
       const uniqueStatuses: string[] = [
-        ...new Set(fetchedProducts.map((product) => product.status || 'Unknown').filter(Boolean)),
+        ...new Set(finalProducts.map((product) => product.status || 'Unknown').filter(Boolean)),
       ];
       setAvailableStatus(uniqueStatuses.length > 0 ? uniqueStatuses : ['Active', 'Inactive', 'Pending']);
+      
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {

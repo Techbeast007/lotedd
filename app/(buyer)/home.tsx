@@ -392,6 +392,17 @@ export default function BuyerHomeScreen() {
                   onScroll={onCarouselScroll}
                   onViewableItemsChanged={onCarouselViewableItemsChanged}
                   viewabilityConfig={{ viewAreaCoveragePercentThreshold: 50 }}
+                  
+                  // Performance optimizations
+                  removeClippedSubviews={true}
+                  maxToRenderPerBatch={3} 
+                  initialNumToRender={1}
+                  windowSize={3}
+                  getItemLayout={(data, index) => ({
+                    length: CAROUSEL_ITEM_WIDTH,
+                    offset: CAROUSEL_ITEM_WIDTH * index,
+                    index,
+                  })}
                 />
                 {renderCarouselIndicator()}
               </>
@@ -421,6 +432,17 @@ export default function BuyerHomeScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerClassName="pl-4 pr-2"
+              
+              // Performance optimizations
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={5}
+              initialNumToRender={5}
+              windowSize={5}
+              getItemLayout={(data, index) => ({
+                length: 80 + 12, // width + margin
+                offset: (80 + 12) * index,
+                index,
+              })}
             />
           </Box>
 
@@ -448,6 +470,17 @@ export default function BuyerHomeScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerClassName="pl-4 pr-2"
+                
+                // Performance optimizations
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={4}
+                initialNumToRender={2}
+                windowSize={5}
+                getItemLayout={(data, index) => ({
+                  length: 170 + 12, // card width + margin
+                  offset: (170 + 12) * index,
+                  index,
+                })}
               />
             ) : (
               <Box className="h-[200px] justify-center items-center">
