@@ -1,7 +1,9 @@
 'use client';
 
 import { categories } from '@/assets/categories';
+import { Box } from "@/components/ui/box";
 import { Button, ButtonText } from '@/components/ui/button';
+import { Card } from "@/components/ui/card";
 import { Heading } from '@/components/ui/heading';
 import { HStack } from '@/components/ui/hstack';
 import { Icon } from '@/components/ui/icon';
@@ -23,7 +25,6 @@ import {
   List,
   Package,
   Search,
-  ShoppingBag,
   Sparkles,
   Star,
   X
@@ -59,7 +60,7 @@ const SORT_OPTIONS = [
   { id: 'rating', label: 'Highest Rated', icon: Star },
 ];
 
-// Product Card Component - Using PureComponent pattern for better performance
+// Product Card Component - Using Card component style
 const ProductCard = memo(({
   product,
   viewMode = 'grid',
@@ -114,104 +115,94 @@ const ProductCard = memo(({
   }, [product.id, onPress]);
   
   return (
-    <TouchableOpacity
-      style={[
-        styles.productCard,
-        isGrid ? styles.gridCard : styles.listCard,
-      ]}
-      activeOpacity={0.8}
+    <TouchableOpacity 
+      activeOpacity={0.9}
       onPress={handleCardPress}
+      style={isGrid ? styles.gridCardContainer : styles.listCardContainer}
     >
-      {/* Product Image */}
-      <View style={[
-        styles.imageContainer,
-        isGrid ? styles.gridImageContainer : styles.listImageContainer,
-      ]}>
-        {imageLoading && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="small" color="#3B82F6" />
-          </View>
-        )}
-        
-        <Image
-          source={{ uri: imageUrl }}
-          style={styles.productImage}
-          alt={product.name || "Product"}
-          contentFit="cover"
-          onLoadStart={() => setImageLoading(true)}
-          onLoad={() => setImageLoading(false)}
-          onError={() => {
-            setImageLoading(false);
-            setImageError(true);
-          }}
-        />
-        
-        {imageError && (
-          <View style={styles.errorImageContainer}>
-            <Text style={styles.errorImageText}>
-              {(product.name || "Product").charAt(0)}
-            </Text>
-          </View>
-        )}
-        
-        {/* Discount Badge */}
-        {discount > 0 && (
-          <View style={styles.discountBadge}>
-            <Text style={styles.discountText}>{discount}% OFF</Text>
-          </View>
-        )}
-        
-        {/* Favorite Button */}
-        <Animated.View 
-          style={[
-            styles.favoriteButton,
-            { transform: [{ scale: heartScale }] }
-          ]}
-        >
-          <TouchableOpacity
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            onPress={handleFavoritePress}
+      <Card className={`p-3 rounded-lg ${isGrid ? 'max-w-full' : 'max-w-full'}`}>
+        {/* Image Container with Discount Badge and Favorite Button */}
+        <Box className="relative">
+          <Image
+            source={{ uri: imageUrl }}
+            className={`h-${isGrid ? '[150px]' : '[120px]'} w-full rounded-md aspect-[4/3]`}
+            alt={product.name || "Product image"}
+            contentFit="cover"
+            onLoadStart={() => setImageLoading(true)}
+            onLoad={() => setImageLoading(false)}
+            onError={() => {
+              setImageLoading(false);
+              setImageError(true);
+            }}
+          />
+          
+          {imageLoading && (
+            <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-background-50">
+              <ActivityIndicator size="small" color="#3B82F6" />
+            </View>
+          )}
+          
+          {imageError && (
+            <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-background-100">
+              <Text className="text-2xl font-bold text-background-400">
+                {(product.name || "Product").charAt(0)}
+              </Text>
+            </View>
+          )}
+          
+          {discount > 0 && (
+            <Box className="absolute top-2 left-2 bg-red-500 px-2 py-1 rounded-md">
+              <Text className="text-xs font-bold text-white">{discount}% OFF</Text>
+            </Box>
+          )}
+          
+          <Animated.View 
+            style={[
+              { transform: [{ scale: heartScale }] },
+              { position: 'absolute', top: 8, right: 8 }
+            ]}
           >
-            <Heart 
-              size={18} 
-              color={isFavorite ? "#FF4D4F" : "#FFFFFF"} 
-              fill={isFavorite ? "#FF4D4F" : "none"} 
-              strokeWidth={2}
-            />
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-      
-      {/* Product Info */}
-      <View style={[
-        styles.productInfo,
-        isGrid ? styles.gridProductInfo : styles.listProductInfo,
-      ]}>
-        <VStack space="xs">
+            <TouchableOpacity
+              onPress={handleFavoritePress}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              className="w-8 h-8 rounded-full bg-black bg-opacity-30 flex items-center justify-center"
+            >
+              <Heart 
+                size={18} 
+                color={isFavorite ? "#FF4D4F" : "#FFFFFF"} 
+                fill={isFavorite ? "#FF4D4F" : "none"} 
+                strokeWidth={2}
+              />
+            </TouchableOpacity>
+          </Animated.View>
+        </Box>
+        
+        {/* Content */}
+        <VStack className="mt-3">
           {/* Brand */}
           {product.brand && (
-            <Text style={styles.brandText} numberOfLines={1}>
+            <Text
+              className="text-xs text-typography-500"
+              numberOfLines={1}
+            >
               {product.brand}
             </Text>
           )}
           
           {/* Product Name */}
-          <Text 
-            style={styles.productName} 
-            numberOfLines={isGrid ? 2 : 3}
-          >
+          <Heading size="sm" className="mb-1 mt-1" numberOfLines={2}>
             {product.name}
-          </Text>
+          </Heading>
           
           {/* Rating */}
           {product.rating && (
-            <HStack space="xs" alignItems="center">
+            <HStack space="xs" alignItems="center" className="mb-1">
               <Star size={14} color="#FFAB00" fill="#FFAB00" />
-              <Text style={styles.ratingText}>
+              <Text className="text-xs text-typography-600">
                 {product.rating.toFixed(1)}
               </Text>
               {product.reviewCount && (
-                <Text style={styles.reviewCount}>
+                <Text className="text-xs text-typography-400">
                   ({product.reviewCount})
                 </Text>
               )}
@@ -219,49 +210,47 @@ const ProductCard = memo(({
           )}
           
           {/* Price */}
-          <HStack space="xs" alignItems="center">
-            <Text style={styles.priceText}>
+          <HStack space="xs" alignItems="center" className="mb-4">
+            <Text className="text-base font-medium text-typography-900">
               ₹{discounted ? product.discountPrice : product.basePrice}
             </Text>
             
             {discounted && (
-              <Text style={styles.originalPriceText}>
+              <Text className="text-xs text-typography-500 line-through">
                 ₹{product.basePrice}
               </Text>
             )}
           </HStack>
+          
+          {/* Action Buttons */}
+          <Box className="flex-row">
+            <Button
+              className="flex-1 px-3 py-2 mr-2"
+              onPress={handleAddToCart}
+              disabled={isAddingToCart}
+            >
+              {isAddingToCart ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <ButtonText size="sm">Add to cart</ButtonText>
+              )}
+            </Button>
+            
+            <Button
+              variant="outline"
+              className="px-3 py-2 border-outline-300"
+              onPress={handleFavoritePress}
+            >
+              <Heart 
+                size={18} 
+                color={isFavorite ? "#FF4D4F" : "#475569"} 
+                fill={isFavorite ? "#FF4D4F" : "none"} 
+                strokeWidth={2}
+              />
+            </Button>
+          </Box>
         </VStack>
-        
-        {/* Add to Cart Button */}
-        {isGrid ? (
-          <TouchableOpacity
-            style={styles.addToCartButton}
-            onPress={handleAddToCart}
-            disabled={isAddingToCart}
-          >
-            {isAddingToCart ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <ShoppingBag size={18} color="#FFFFFF" />
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.listAddToCartButton}
-            onPress={handleAddToCart}
-            disabled={isAddingToCart}
-          >
-            {isAddingToCart ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <HStack space="xs" alignItems="center">
-                <ShoppingBag size={16} color="#FFFFFF" />
-                <Text style={styles.addToCartText}>Add to Cart</Text>
-              </HStack>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
+      </Card>
     </TouchableOpacity>
   );
 }, (prevProps, nextProps) => {
@@ -502,15 +491,17 @@ export default function ShopScreen() {
   
   // Optimized renderItem function
   const renderItem = useCallback(({ item }) => (
-    <ProductCard
-      product={item}
-      viewMode={viewMode}
-      onPress={handleProductPress}
-      onAddToCart={handleAddToCart}
-      onToggleFavorite={handleToggleFavorite}
-      isAddingToCart={addingToCartId === item.id}
-      isFavorite={favorites.includes(item.id)}
-    />
+    <View style={viewMode === 'grid' ? styles.gridCardWrapper : styles.listCardWrapper}>
+      <ProductCard
+        product={item}
+        viewMode={viewMode}
+        onPress={handleProductPress}
+        onAddToCart={handleAddToCart}
+        onToggleFavorite={handleToggleFavorite}
+        isAddingToCart={addingToCartId === item.id}
+        isFavorite={favorites.includes(item.id)}
+      />
+    </View>
   ), [viewMode, handleProductPress, handleAddToCart, handleToggleFavorite, addingToCartId, favorites]);
   
   // Keyextractor optimization
@@ -1192,12 +1183,27 @@ const styles = StyleSheet.create({
   },
   
   // Product List Styles
+  gridCardContainer: {
+    flex: 1,
+  },
+  listCardContainer: {
+    width: '100%',
+  },
+  gridCardWrapper: {
+    width: '50%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
+  },
+  listCardWrapper: {
+    width: '100%',
+    marginBottom: 12,
+  },
   productList: {
-    padding: 12,
+    padding: 8,
     paddingBottom: 80, // Extra padding at bottom for better UX
   },
   productRow: {
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start', // Changed from space-between to allow proper flex wrapping
   },
   
   // Product Card Styles - Fixed image coverage
@@ -1227,8 +1233,7 @@ const styles = StyleSheet.create({
   gridImageContainer: {
     width: '100%',
     height: '0',
-    paddingBottom: '100%', // Creates a square aspect ratio
-    position: 'relative',
+    paddingBottom: '100%' // Creates a square aspect ratio
   },
   listImageContainer: {
     width: 120,
@@ -1469,10 +1474,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#475569',
-  },
-  activeFilterChipText: {
-    color: '#FFFFFF',
-  },
+  } ,
   
   // Price Range Styles
   priceInputContainer: {

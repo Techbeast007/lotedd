@@ -231,3 +231,91 @@ export const getPopularProducts = async (limit: number = 10): Promise<Product[]>
     return [];
   }
 };
+
+/**
+ * Fetches related products based on category
+ * @param category - Product category to match
+ * @param currentProductId - Current product ID to exclude from results
+ * @param limit - Maximum number of products to return (default 5)
+ */
+export const getRelatedProducts = async (category: string, currentProductId: string, limitCount = 5) => {
+  try {
+    if (!category) {
+      console.warn('No category provided for related products');
+      return [];
+    }
+
+    const firestore = getFirestore();
+    const productsRef = collection(firestore, 'products');
+    
+    // First approach: Get all products with the same category and filter out the current one
+    try {
+      const q = query(
+        productsRef,
+        where('category', '==', category)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      let relatedProducts = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (doc.id !== currentProductId) {
+          relatedProducts.push({
+            id: doc.id,
+            ...data,
+          });
+        }
+      });
+      
+      // If we didn't get enough results, try with categoryName field instead
+      if (relatedProducts.length < limitCount) {
+        const altQuery = query(
+          productsRef,
+          where('categoryName', '==', category)
+        );
+        
+        const additionalSnapshot = await getDocs(altQuery);
+        additionalSnapshot.forEach((doc) => {
+          if (doc.id !== currentProductId && !relatedProducts.some(p => p.id === doc.id)) {
+            relatedProducts.push({
+              id: doc.id,
+              ...doc.data(),
+            });
+          }
+        });
+      }
+      
+      // Shuffle and limit results
+      return relatedProducts
+        .sort(() => 0.5 - Math.random())
+        .slice(0, limitCount);
+        
+    } catch (error) {
+      console.error('Error with query, falling back to simple approach:', error);
+      
+      // Fallback: get all products and filter manually
+      const simpleQuery = query(productsRef);
+      const querySnapshot = await getDocs(simpleQuery);
+      
+      let relatedProducts = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (doc.id !== currentProductId && 
+           (data.category === category || data.categoryName === category)) {
+          relatedProducts.push({
+            id: doc.id,
+            ...data,
+          });
+        }
+      });
+      
+      return relatedProducts
+        .sort(() => 0.5 - Math.random())
+        .slice(0, limitCount);
+    }
+  } catch (error) {
+    console.error('Error getting related products:', error);
+    return [];
+  }
+};
