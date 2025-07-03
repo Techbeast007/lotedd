@@ -8,12 +8,12 @@ import { Heading } from '@/components/ui/heading';
 import { HStack } from '@/components/ui/hstack';
 import { Icon } from '@/components/ui/icon';
 import { Image } from '@/components/ui/image';
-import { Input, InputField, InputIcon, InputSlot } from '@/components/ui/input';
+// Removed unused Input components
 import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
 import { useCart } from '@/services/context/CartContext';
-import { getProducts } from '@/services/productService';
+import { Product, getProducts } from '@/services/productService';
 import { useRouter } from 'expo-router';
 import {
   ArrowUpDown,
@@ -61,7 +61,7 @@ const SORT_OPTIONS = [
 ];
 
 // Product Card Component - Using Card component style
-const ProductCard = memo(({
+const ProductCardComponent = ({
   product,
   viewMode = 'grid',
   onPress,
@@ -253,7 +253,10 @@ const ProductCard = memo(({
       </Card>
     </TouchableOpacity>
   );
-}, (prevProps, nextProps) => {
+};
+
+// Memoize the ProductCardComponent with React.memo
+const ProductCard = memo(ProductCardComponent, (prevProps, nextProps) => {
   // Custom equality check for memoization optimization
   return (
     prevProps.product.id === nextProps.product.id &&
@@ -271,12 +274,12 @@ export default function ShopScreen() {
   const { addItem } = useCart();
   
   // State management
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [addingToCartId, setAddingToCartId] = useState(null);
-  const [favorites, setFavorites] = useState([]);
+  const [error, setError] = useState<string | null>(null);
+  const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<string[]>([]);
   
   // UI state
   const [viewMode, setViewMode] = useState('grid');
@@ -287,7 +290,7 @@ export default function ShopScreen() {
   const [sortModalVisible, setSortModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedSort, setSelectedSort] = useState('popular');
-  const [selectedBrands, setSelectedBrands] = useState([]);
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [minRating, setMinRating] = useState(0);
   const [priceRange, setPriceRange] = useState([0, 10000]);
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -391,12 +394,25 @@ export default function ShopScreen() {
       }
       
       // Category filter
-      if (selectedCategory !== 'all' && product.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== 'all') {
+        // Check if product has a matching categoryId or category
+        const categoryMatches = 
+          // Match by categoryId (string or number comparison)
+          product.categoryId === selectedCategory || 
+          product.categoryId === Number(selectedCategory) ||
+          String(product.categoryId) === selectedCategory ||
+          // Match by category name
+          product.category === selectedCategory ||
+          // Match by categoryName if available
+          product.categoryName === selectedCategory;
+          
+        if (!categoryMatches) {
+          return false;
+        }
       }
       
       // Brand filter
-      if (selectedBrands.length > 0 && !selectedBrands.includes(product.brand)) {
+      if (selectedBrands.length > 0 && (!product.brand || !selectedBrands.includes(product.brand))) {
         return false;
       }
       
@@ -459,7 +475,9 @@ export default function ShopScreen() {
   }, [filteredProducts, selectedSort]);
   
   // Toggle brand selection
-  const toggleBrand = useCallback((brand) => {
+  const toggleBrand = useCallback((brand: string) => {
+    if (!brand) return;
+    
     setSelectedBrands(prev => 
       prev.includes(brand) ? 
         prev.filter(b => b !== brand) : 
@@ -561,32 +579,24 @@ export default function ShopScreen() {
       {/* Header */}
       <View style={styles.header}>
         <HStack style={styles.searchContainer}>
-          <Input 
-            variant="outline" 
-            size="md" 
-            style={styles.searchInput}
-            borderColor="#E5E7EB"
-            backgroundColor="#F9FAFB"
-          >
-            <InputSlot pl="$3">
-              <InputIcon as={Search} color="#6B7280" />
-            </InputSlot>
-            <InputField
+          <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 8, paddingHorizontal: 8}}>
+            <Search color="#6B7280" size={18} style={{marginRight: 8}} />
+            <TextInput
               placeholder="Search products..."
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
               onChangeText={setSearchQuery}
-              fontSize={16}
+              style={{flex: 1, fontSize: 16, height: 40, color: '#111827'}}
             />
             {searchQuery.length > 0 && (
-              <InputSlot pr="$3">
-                <InputIcon 
-                  as={<X size={18} color="#6B7280" />} 
-                  onPress={() => setSearchQuery('')}
-                />
-              </InputSlot>
+              <TouchableOpacity 
+                onPress={() => setSearchQuery('')}
+                style={{padding: 8}}
+              >
+                <X size={18} color="#6B7280" />
+              </TouchableOpacity>
             )}
-          </Input>
+          </View>
           
           <TouchableOpacity
             style={styles.filterButton}
@@ -1559,8 +1569,6 @@ const styles = StyleSheet.create({
   },
   starsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   starButton: {
     padding: 4,
@@ -1716,6 +1724,6 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#475569',
-  },
+    color: '#475569'
+  }
 });

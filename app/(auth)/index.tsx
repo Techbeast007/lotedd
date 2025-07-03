@@ -129,7 +129,7 @@ export default function AuthScreen() {
           
           // Redirect to the appropriate screen based on role
           if (currentRole === 'buyer') {
-            router.replace('/(buyer)');
+            router.replace('/(buyer)/home');
           } else {
             router.replace('/(tabs)');
           }
@@ -260,8 +260,8 @@ export default function AuthScreen() {
         
         // Redirect based on the current role the user has selected
         if (currentRole === 'buyer') {
-          // Navigate directly to the buyer layout root instead of specifying home
-          router.replace('/(buyer)');
+          // Navigate to the buyer home screen
+          router.replace('/(buyer)/home');
         } else {
           router.replace('/(tabs)');
         }

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
+import { Gavel, Home, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
 import React, { useMemo } from 'react';
 import { View } from 'react-native';
 
@@ -64,6 +64,17 @@ export default function BuyerTabLayout() {
         borderRadius: 20,
       }}>
         <User size={24} color={color} />
+      </View>
+    ),
+    bids: (color: string, focused: boolean) => (
+      <View style={{ 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        backgroundColor: focused ? `${color}20` : 'transparent',
+        padding: 10,
+        borderRadius: 20,
+      }}>
+        <Gavel size={24} color={color} />
       </View>
     )
   }), []);
@@ -130,6 +141,13 @@ export default function BuyerTabLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color, focused }) => renderIcon.profile(color, focused),
+        }}
+      />
+      <Tabs.Screen
+        name="bids"
+        options={{
+          title: 'Bids',
+          tabBarIcon: ({ color, focused }) => renderIcon.bids(color, focused),
         }}
       />
     </Tabs>

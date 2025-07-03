@@ -3,12 +3,14 @@
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import "@/global.css";
 import { CartProvider } from "@/services/context/CartContext";
-import { getAuth, isFirebaseInitialized } from '@/services/firebaseService';
+import { isFirebaseInitialized } from '@/services/firebaseService';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { onAuthStateChanged } from '@react-native-firebase/auth';
-import { Slot, usePathname, useRouter, useSegments } from 'expo-router';
+import auth from '@react-native-firebase/auth';
+import { Slot, Tabs, usePathname, useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, AppStateStatus, Text, View } from 'react-native';
+import '../services/firebaseInitialize'; // Ensure Firebase is initialized
 
 // Utility to track navigation state
 const safeNavigation = {
@@ -23,8 +25,7 @@ const safeNavigation = {
   }
 };
 
-// Initialize auth outside of the component to avoid re-initialization
-const auth = getAuth();
+// Firebase auth is already imported from '@react-native-firebase/auth'
 
 export default function RootLayout() {
   const segments = useSegments();
@@ -117,7 +118,9 @@ export default function RootLayout() {
     const isInSpecialRoutes = 
       currentPath.includes('/product/') || 
       currentPath.includes('/editProduct/') || 
-      currentPath.includes('/productadd/');
+      currentPath.includes('/productadd/') ||
+      currentPath.includes('/bids/') ||
+      currentPath.includes('/bid-redirect');
     
     // If we're in a special route like product details, don't redirect
     if (isInSpecialRoutes) {
@@ -138,12 +141,12 @@ export default function RootLayout() {
     else if (user) {
       if (role === 'buyer' && !isInBuyerFlow) {
         shouldNavigate = true;
-        targetPath = '/(buyer)/home';
+        targetPath = '/(buyer)/home' as const; // Type assertion to fix the type error
         console.log('User is buyer, redirecting to buyer home');
       } 
       else if (role === 'seller' && !isInSellerFlow) {
         shouldNavigate = true;
-        targetPath = '/(tabs)';
+        targetPath = '/(tabs)' as const;
         console.log('User is seller, redirecting to seller tabs');
       }
     }
@@ -160,7 +163,7 @@ export default function RootLayout() {
       console.log('Navigating to:', targetPath);
       hasNavigated.current = true;
       safeNavigation.lastNavigatedPath = targetPath;
-      router.replace(targetPath);
+      router.replace(targetPath as any); // Type assertion to handle routing
     }
   }, [isReady, pathname, authData, router]);
 
@@ -169,7 +172,7 @@ export default function RootLayout() {
     // Record current segments for later comparison
     currentSegmentRef.current = segments;
     
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = auth().onAuthStateChanged((user) => {
       console.log('Auth state changed. User:', user ? 'logged in' : 'logged out');
       
       const authenticated = !!user;
@@ -217,8 +220,9 @@ export default function RootLayout() {
           console.log('User authenticated, redirecting to buyer home');
           // Prevent navigation loops by checking current route
           if (segments[0] !== '(buyer)') {
-            safeNavigation.lastNavigatedPath = '/(buyer)/home';
-            router.replace('/(buyer)/home');
+            const targetPath = '/(buyer)/home' as const; // Type assertion to fix the type error
+            safeNavigation.lastNavigatedPath = targetPath;
+            router.replace(targetPath);
           }
         } else {
           console.log('User not authenticated, redirecting to auth');
@@ -273,3 +277,43 @@ export default function RootLayout() {
     </GluestackUIProvider>
   );
 }
+
+// Add bidding to your tab navigator
+
+// Example tab navigator code - use this as a reference for your own tab navigator
+// Note: All bidding functionality is now consolidated in a single tab in (tabs)/seller/bids/index.tsx
+const TabNavigator = () => {
+  return (
+    <Tabs
+      screenOptions={{
+        // ...your existing screen options
+      }}
+    >
+      {/* ...your existing tabs */}
+      
+      {/* Add bidding tab for buyers */}
+      <Tabs.Screen
+        name="(buyer)/bids/index"
+        options={{
+          title: "Bids",
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="gavel" size={20} color={color} />
+          ),
+        }}
+      />
+      
+      {/* Consolidated bidding tab for sellers */}
+      <Tabs.Screen
+        name="(tabs)/seller/bids/index"
+        options={{
+          title: "Bids",
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialIcons name="gavel" size={20} color={color} />
+          ),
+        }}
+      />
+      
+      {/* ...your other tabs */}
+    </Tabs>
+  );
+};

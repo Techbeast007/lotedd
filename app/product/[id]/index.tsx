@@ -9,6 +9,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
+import { incrementProductViewCount } from '@/services/biddingService';
 import { useCart } from '@/services/context/CartContext';
 import { getRelatedProducts } from '@/services/productService';
 import { collection, doc, getDoc, getDocs, getFirestore, limit, query } from '@react-native-firebase/firestore';
@@ -345,6 +346,14 @@ export default function ProductDetailScreen() {
         
         setProduct(productWithId);
         setMainImage(productWithId.featuredImage);
+        
+        // Track product view
+        try {
+          await incrementProductViewCount(productDoc.id);
+          console.log('Product view tracked for:', productDoc.id);
+        } catch (viewError) {
+          console.error('Error tracking product view:', viewError);
+        }
         
         // Set initial variant if available
         const initialVariant: ProductVariant = {};

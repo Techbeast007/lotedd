@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Bell, Home, Search, User } from 'lucide-react-native';
+import { Bell, Gavel, Home, Search, User } from 'lucide-react-native';
 import React from 'react';
 import { View } from 'react-native';
 
@@ -109,6 +109,23 @@ export default function TabLayout() {
               borderRadius: 20,
             }}>
               <User size={24} color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="bidsManage"
+        options={{
+          title: 'Bids',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              backgroundColor: focused ? `${color}20` : 'transparent',
+              padding: 10,
+              borderRadius: 20,
+            }}>
+              <Gavel size={24} color={color} />
             </View>
           ),
         }}

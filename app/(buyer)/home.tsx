@@ -80,14 +80,17 @@ export default function BuyerHomeScreen() {
     const loadProducts = async () => {
       try {
         setLoading(true);
+        console.log('Starting to fetch featured products...');
+        
         // Get featured products first
         const featured = await getFeaturedProducts(15);
-        console.log('Featured products loaded:', featured.length);
+        console.log('Featured products loaded:', featured.length, featured);
         setFeaturedProducts(featured || []);
         
+        console.log('Starting to fetch popular products...');
         // Then get popular products separately
         const popular = await getPopularProducts(8);
-        console.log('Popular products loaded:', popular.length);
+        console.log('Popular products loaded:', popular.length, popular);
         setPopularProducts(popular || []);
       } catch (error) {
         // Just log the error, don't throw

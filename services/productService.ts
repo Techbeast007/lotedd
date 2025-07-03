@@ -28,6 +28,7 @@ export interface Product {
   freeShipping?: boolean;
   rating?: number;
   reviewCount?: number;
+  viewCount?: number; // Track number of product views
   createdAt?: any; // Firestore timestamp
   updatedAt?: any; // Firestore timestamp
   brand?: string;
@@ -48,14 +49,57 @@ export interface Product {
  * Gets all products from Firestore
  * @returns Array of products
  */
+/**
+ * Maps between category IDs and names based on a predefined list
+ * This helps with category filtering
+ */
+export const getCategoryMapping = (): Record<string, string> => {
+  const categoryMap: Record<string, string> = {
+    '1': 'Electronics',
+    '2': 'Fashion',
+    '3': 'Home Appliances',
+    '4': 'Books',
+    '5': 'Toys',
+    '6': 'Sports',
+    '7': 'Beauty & Personal Care',
+    '8': 'Automotive',
+    '9': 'Groceries',
+    '10': 'Art'
+  };
+  
+  return categoryMap;
+};
+
 export const getProducts = async (): Promise<Product[]> => {
   try {
+    console.log('Attempting to fetch products from Firestore...');
     const productsCollection = collection(firestore, 'products');
     const productSnapshot = await getDocs(productsCollection);
-    return productSnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    })) as Product[];
+    
+    console.log(`Retrieved ${productSnapshot.docs.length} products from Firestore`);
+    
+    if (productSnapshot.docs.length === 0) {
+      console.warn('No products found in Firestore! You may need to add some test data.');
+    }
+    
+    // Get products and add category names if missing
+    const categoryMap = getCategoryMapping();
+    const products = productSnapshot.docs.map(doc => {
+      const data = doc.data();
+      const product = { 
+        id: doc.id, 
+        ...data 
+      } as Product;
+      
+      // If product has categoryId but no category name, add it
+      if (product.categoryId && !product.category && categoryMap[product.categoryId]) {
+        product.category = categoryMap[product.categoryId];
+      }
+      
+      return product;
+    });
+    
+    return products;
   } catch (error) {
     console.error('Error fetching products:', error);
     // Return empty array instead of throwing
@@ -82,16 +126,42 @@ export const addProduct = async (product: Product): Promise<string> => {
 
 /**
  * Gets products by category
+ * @param category - Can be either a category string name or category ID
  */
 export const getProductsByCategory = async (category: string): Promise<Product[]> => {
   try {
     const productsCollection = collection(firestore, 'products');
-    const q = query(productsCollection, where('category', '==', category));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ 
+    let products: Product[] = [];
+    
+    // Try fetching by category name first
+    let q = query(productsCollection, where('category', '==', category));
+    let querySnapshot = await getDocs(q);
+    
+    // If no results, try by categoryId (if category parameter is numeric)
+    if (querySnapshot.empty && !isNaN(Number(category))) {
+      q = query(productsCollection, where('categoryId', '==', category));
+      querySnapshot = await getDocs(q);
+      
+      // If still no results, try categoryId as a string (some databases store IDs as strings)
+      if (querySnapshot.empty) {
+        q = query(productsCollection, where('categoryId', '==', Number(category)));
+        querySnapshot = await getDocs(q);
+      }
+    }
+    
+    // If still no results, try by categoryName as a fallback
+    if (querySnapshot.empty && isNaN(Number(category))) {
+      q = query(productsCollection, where('categoryName', '==', category));
+      querySnapshot = await getDocs(q);
+    }
+    
+    products = querySnapshot.docs.map(doc => ({ 
       id: doc.id, 
       ...doc.data() 
     })) as Product[];
+    
+    console.log(`Found ${products.length} products for category ${category}`);
+    return products;
   } catch (error) {
     console.error(`Error fetching products by category ${category}:`, error);
     return [];
@@ -194,13 +264,53 @@ export const uploadProductImage = async (uri: string, productId: string): Promis
  */
 export const getFeaturedProducts = async (limit: number = 10): Promise<Product[]> => {
   try {
+    console.log('Attempting to fetch featured products...');
     const productsCollection = collection(firestore, 'products');
     const querySnapshot = await getDocs(productsCollection);
-    const products = querySnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    })) as Product[];
-    console.log('Featured products:', products[0]);
+    
+    console.log(`Retrieved ${querySnapshot.docs.length} products for featured selection`);
+    
+    // Get category mapping
+    const categoryMap = getCategoryMapping();
+    
+    // Process products and add category names if missing
+    const products = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      const product = { 
+        id: doc.id, 
+        ...data 
+      } as Product;
+      
+      // If product has categoryId but no category name, add it
+      if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+        product.category = categoryMap[String(product.categoryId)];
+      }
+      
+      return product;
+    });
+    
+    if (products.length > 0) {
+      console.log('First featured product:', products[0].name, products[0].id);
+      console.log('Category info:', products[0].category, products[0].categoryId);
+    } else {
+      console.warn('No featured products found - your Firestore collection may be empty');
+      
+      // Create a placeholder product for debugging
+      const placeholderProducts: Product[] = Array(limit).fill(null).map((_, i) => ({
+        id: `placeholder-${i}`,
+        name: `Placeholder Product ${i+1}`,
+        description: 'This is a placeholder product because no products were found in your database.',
+        basePrice: 999,
+        discountPrice: 799,
+        stockQuantity: 10,
+        categoryId: String(i % 10 + 1), // Assign different category IDs
+        category: categoryMap[String(i % 10 + 1)], // Assign matching categories
+        featuredImage: 'https://via.placeholder.com/800x400?text=No+Products+Found'
+      }));
+      
+      console.log('Created placeholder products for UI testing');
+      return placeholderProducts;
+    }
     
     // Take the most recent products as featured products
     return products.slice(0, limit);
@@ -216,16 +326,56 @@ export const getFeaturedProducts = async (limit: number = 10): Promise<Product[]
  */
 export const getPopularProducts = async (limit: number = 10): Promise<Product[]> => {
   try {
+    console.log('Attempting to fetch popular products...');
     const productsCollection = collection(firestore, 'products');
     const querySnapshot = await getDocs(productsCollection);
-    const products = querySnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    })) as Product[];
     
-    // In a real app, you might sort by popularity metrics
-    // For now, just return some products
-    return products.slice(0, limit);
+    console.log(`Retrieved ${querySnapshot.docs.length} products for popular selection`);
+    
+    // Get category mapping
+    const categoryMap = getCategoryMapping();
+    
+    // Process products and add category names if missing
+    const products = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      const product = { 
+        id: doc.id, 
+        ...data 
+      } as Product;
+      
+      // If product has categoryId but no category name, add it
+      if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+        product.category = categoryMap[String(product.categoryId)];
+      }
+      
+      return product;
+    });
+    
+    if (products.length > 0) {
+      console.log('First popular product:', products[0].name, products[0].id);
+      console.log('Popular product category info:', products[0].category, products[0].categoryId);
+      
+      // In a real app, you might sort by popularity metrics
+      return products.slice(0, limit);
+    } else {
+      console.warn('No popular products found - your Firestore collection may be empty');
+      
+      // Create placeholder products for testing UI
+      const placeholderProducts: Product[] = Array(limit).fill(null).map((_, i) => ({
+        id: `popular-${i}`,
+        name: `Popular Item ${i+1}`,
+        description: 'This is a placeholder popular product because no products were found in your database.',
+        basePrice: 1299,
+        discountPrice: 999,
+        stockQuantity: 5,
+        categoryId: String((i + 5) % 10 + 1), // Different category IDs than featured
+        category: categoryMap[String((i + 5) % 10 + 1)], // Assign matching categories
+        featuredImage: 'https://via.placeholder.com/800x400?text=Popular+Product'
+      }));
+      
+      console.log('Created placeholder popular products for UI testing');
+      return placeholderProducts;
+    }
   } catch (error) {
     console.error('Error getting popular products:', error);
     return [];
@@ -238,7 +388,7 @@ export const getPopularProducts = async (limit: number = 10): Promise<Product[]>
  * @param currentProductId - Current product ID to exclude from results
  * @param limit - Maximum number of products to return (default 5)
  */
-export const getRelatedProducts = async (category: string, currentProductId: string, limitCount = 5) => {
+export const getRelatedProducts = async (category: string, currentProductId: string, limitCount = 5): Promise<Product[]> => {
   try {
     if (!category) {
       console.warn('No category provided for related products');
@@ -247,41 +397,60 @@ export const getRelatedProducts = async (category: string, currentProductId: str
 
     const firestore = getFirestore();
     const productsRef = collection(firestore, 'products');
+    const categoryMap = getCategoryMapping();
     
     // First approach: Get all products with the same category and filter out the current one
     try {
-      const q = query(
+      // Try to match by both name and ID
+      const isNumericCategory = !isNaN(Number(category));
+      
+      // Get products by category name
+      let q = query(
         productsRef,
         where('category', '==', category)
       );
       
       const querySnapshot = await getDocs(q);
-      let relatedProducts = [];
+      let relatedProducts: Product[] = [];
       
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (doc.id !== currentProductId) {
-          relatedProducts.push({
+          const product = {
             id: doc.id,
             ...data,
-          });
+          } as Product;
+          
+          // Add category name if missing but has ID
+          if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+            product.category = categoryMap[String(product.categoryId)];
+          }
+          
+          relatedProducts.push(product);
         }
       });
       
-      // If we didn't get enough results, try with categoryName field instead
-      if (relatedProducts.length < limitCount) {
+      // If we didn't get enough results, try with categoryId field instead
+      if (relatedProducts.length < limitCount && isNumericCategory) {
         const altQuery = query(
           productsRef,
-          where('categoryName', '==', category)
+          where('categoryId', '==', category)
         );
         
         const additionalSnapshot = await getDocs(altQuery);
         additionalSnapshot.forEach((doc) => {
           if (doc.id !== currentProductId && !relatedProducts.some(p => p.id === doc.id)) {
-            relatedProducts.push({
+            const product = {
               id: doc.id,
               ...doc.data(),
-            });
+            } as Product;
+            
+            // Add category name if missing but has ID
+            if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+              product.category = categoryMap[String(product.categoryId)];
+            }
+            
+            relatedProducts.push(product);
           }
         });
       }
@@ -298,15 +467,27 @@ export const getRelatedProducts = async (category: string, currentProductId: str
       const simpleQuery = query(productsRef);
       const querySnapshot = await getDocs(simpleQuery);
       
-      let relatedProducts = [];
+      let relatedProducts: Product[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        if (doc.id !== currentProductId && 
-           (data.category === category || data.categoryName === category)) {
-          relatedProducts.push({
+        const categoryMatches = 
+          data.category === category || 
+          data.categoryName === category ||
+          String(data.categoryId) === category ||
+          data.categoryId === Number(category);
+          
+        if (doc.id !== currentProductId && categoryMatches) {
+          const product = {
             id: doc.id,
             ...data,
-          });
+          } as Product;
+          
+          // Add category name if missing but has ID
+          if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+            product.category = categoryMap[String(product.categoryId)];
+          }
+          
+          relatedProducts.push(product);
         }
       });
       
