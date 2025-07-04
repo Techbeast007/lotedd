@@ -1,102 +1,129 @@
 'use client';
 
-import { Box } from '@/components/ui/box';
-import { Button, ButtonText } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Heading } from '@/components/ui/heading';
+import { Center } from '@/components/ui/center';
 import { HStack } from '@/components/ui/hstack';
-import { Image } from '@/components/ui/image';
-import { Input, InputField, InputIcon, InputSlot } from '@/components/ui/input';
 import { ScrollView } from '@/components/ui/scroll-view';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
-import { VStack } from '@/components/ui/vstack';
 import { useCart } from '@/services/context/CartContext';
-import { Product, getFeaturedProducts, getPopularProducts } from '@/services/productService';
+import { Product, getFeaturedProducts } from '@/services/productService';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { ArrowRight, ChevronLeft, ChevronRight, Heart, MessageSquare, Search, ShoppingBag, ShoppingCart, Star, Tag, TrendingUp, X } from 'lucide-react-native';
+import {
+  ArrowRight,
+  Cpu,
+  Gavel,
+  Package,
+  PieChart,
+  Shirt,
+  ShoppingCart,
+  Sofa,
+  Tag,
+  Truck,
+  Utensils,
+  Wrench
+} from 'lucide-react-native';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, FlatList, Platform, SafeAreaView, StatusBar, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// Custom gradient component as alternative to LinearGradient
-interface CustomGradientProps {
-  colors: string[];
-  start?: { x: number; y: number };
-  end?: { x: number; y: number };
-  style?: any;
-  className?: string;
-  children?: React.ReactNode;
-}
-
-const CustomGradient = ({ colors, start, end, style, className, children }: CustomGradientProps) => {
-  return (
-    <View
-      style={[
-        {
-          backgroundColor: colors[0],
-          backgroundImage: `linear-gradient(to ${(end?.y ?? 0) > (end?.x ?? 0) ? 'bottom' : 'right'}, ${colors.join(', ')})`,
-          position: 'relative',
-          overflow: 'hidden',
-        },
-        style,
-        // Convert className to style object if needed for native
-        className ? { className } : {}
-      ]}
-    >
-      {children}
-    </View>
-  );
-};
+import {
+  Animated,
+  Dimensions,
+  FlatList,
+  Image,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 const { width } = Dimensions.get('window');
-const CAROUSEL_ITEM_WIDTH = width;
+
+// Our value proposition items for B2B buyers
+const valueProps = [
+  { 
+    id: '1', 
+    title: 'Below-Cost Deals',
+    description: 'Get products below manufacturing cost.',
+    icon: Tag,
+    color: '#3B82F6' // Blue
+  },
+  { 
+    id: '2', 
+    title: 'Bulk Discounts',
+    description: 'Save more on larger quantities.',
+    icon: Package,
+    color: '#10B981' // Green
+  },
+  { 
+    id: '3', 
+    title: 'Premium Selection',
+    description: 'Quality inventory across industries.',
+    icon: Truck,
+    color: '#F59E0B' // Amber
+  },
+  { 
+    id: '4', 
+    title: 'Bid Your Price',
+    description: 'Name your price in our auction system.',
+    icon: PieChart,
+    color: '#8B5CF6' // Purple
+  },
+];
+
+// B2B industry verticals
+const industries = [
+  { 
+    id: '1', 
+    name: 'Apparel & Fashion', 
+    color: '#3B82F6', // Blue
+    icon: 'shirt' 
+  },
+  { 
+    id: '2', 
+    name: 'Electronics', 
+    color: '#10B981', // Green
+    icon: 'cpu' 
+  },
+  { 
+    id: '3', 
+    name: 'Home & Furniture', 
+    color: '#F59E0B', // Amber
+    icon: 'sofa' 
+  },
+  { 
+    id: '4', 
+    name: 'Industrial Supplies', 
+    color: '#8B5CF6', // Purple
+    icon: 'tool' 
+  },
+  { 
+    id: '5', 
+    name: 'Food & Beverage', 
+    color: '#EC4899', // Pink
+    icon: 'utensils' 
+  },
+];
 
 export default function BuyerHomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const toast = useToast();
-  const { addItem, isLoading: cartLoading } = useCart();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { addItem } = useCart();
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [popularProducts, setPopularProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
-  const [isCartLoading, setIsCartLoading] = useState(false);
   const carouselRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
-
-  const [categories] = useState([
-    { id: '1', name: 'Electronics', icon: <ShoppingBag size={18} color="#3B82F6" /> },
-    { id: '2', name: 'Apparel', icon: <Tag size={18} color="#10B981" /> },
-    { id: '3', name: 'Industrial', icon: <TrendingUp size={18} color="#F59E0B" /> },
-    { id: '4', name: 'Home Goods', icon: <ShoppingBag size={18} color="#EF4444" /> },
-    { id: '5', name: 'Food & Beverage', icon: <ShoppingBag size={18} color="#8B5CF6" /> },
-  ]);
 
   // Fetch products
   useEffect(() => {
     const loadProducts = async () => {
       try {
         setLoading(true);
-        console.log('Starting to fetch featured products...');
         
-        // Get featured products first
-        const featured = await getFeaturedProducts(15);
-        console.log('Featured products loaded:', featured.length, featured);
+        // Get featured products (will be our showcase products)
+        const featured = await getFeaturedProducts(8);
         setFeaturedProducts(featured || []);
-        
-        console.log('Starting to fetch popular products...');
-        // Then get popular products separately
-        const popular = await getPopularProducts(8);
-        console.log('Popular products loaded:', popular.length, popular);
-        setPopularProducts(popular || []);
       } catch (error) {
-        // Just log the error, don't throw
         console.error('Error loading products:', error);
       } finally {
-        // Always set loading to false
         setLoading(false);
       }
     };
@@ -104,22 +131,22 @@ export default function BuyerHomeScreen() {
     loadProducts();
   }, []);
   
-  // Auto-scroll carousel
+  // Auto-scroll hero carousel
   useEffect(() => {
     const carouselInterval = setInterval(() => {
-      if (featuredProducts.length > 0) {
-        const nextIndex = (activeCarouselIndex + 1) % Math.min(5, featuredProducts.length);
+      if (valueProps.length > 0) {
+        const nextIndex = (activeCarouselIndex + 1) % valueProps.length;
         carouselRef.current?.scrollToIndex({
           index: nextIndex,
           animated: true
         });
         setActiveCarouselIndex(nextIndex);
       }
-    }, 3500);
+    }, 4000);
 
     return () => clearInterval(carouselInterval);
-  }, [activeCarouselIndex, featuredProducts]);
-  
+  }, [activeCarouselIndex]);
+
   const navigateToProduct = (productId: string) => {
     router.push(`/product/${productId}`);
   };
@@ -135,534 +162,834 @@ export default function BuyerHomeScreen() {
       setActiveCarouselIndex(viewableItems[0].index || 0);
     }
   };
+  
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50,
+  };
 
-  const renderCarouselItem = ({ item, index }: { item: Product, index: number }) => (
-    <TouchableOpacity 
-      activeOpacity={0.9}
-      onPress={() => navigateToProduct(item.id || '')}
-      style={{ width: CAROUSEL_ITEM_WIDTH }}
-    >
-      <Box className="relative h-[220px]">
-        <Image
-          source={{ uri: item.featuredImage || 'https://via.placeholder.com/800x400?text=Product' }}
-          className="w-full h-full"
-          alt={item.name || 'Product'}
-          resizeMode="cover"
-        />
-        <CustomGradient
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']}
-          className="absolute bottom-0 left-0 right-0 h-[100px]"
-        >
-          <Box className="absolute bottom-0 left-0 right-0 p-4">
-            <Text className="text-white text-xl font-bold" numberOfLines={1}>
-              {item.name}
-            </Text>
-            <HStack className="items-center mt-1">
-              <Text className="text-white text-base font-bold mr-2">
-                ₹{(item.discountPrice && item.discountPrice > 0) ? item.discountPrice : item.basePrice}
-              </Text>
-              {(item.discountPrice && item.discountPrice > 0) && (
-                <Text className="text-gray-300 line-through">
-                  ₹{item.basePrice}
-                </Text>
-              )}
-            </HStack>
-          </Box>
-        </CustomGradient>
-        
-        {/* Navigation arrows */}
-        {index === activeCarouselIndex && (
-          <>
-            {activeCarouselIndex > 0 && (
-              <TouchableOpacity
-                className="absolute top-1/2 left-2 w-10 h-10 bg-white/30 rounded-full items-center justify-center -translate-y-5"
-                onPress={() => {
-                  const newIndex = activeCarouselIndex - 1;
-                  carouselRef.current?.scrollToIndex({
-                    index: newIndex,
-                    animated: true
-                  });
-                  setActiveCarouselIndex(newIndex);
-                }}
-              >
-                <ChevronLeft size={24} color="white" />
-              </TouchableOpacity>
-            )}
-            
-            {activeCarouselIndex < Math.min(featuredProducts.length, 5) - 1 && (
-              <TouchableOpacity
-                className="absolute top-1/2 right-2 w-10 h-10 bg-white/30 rounded-full items-center justify-center -translate-y-5"
-                onPress={() => {
-                  const newIndex = activeCarouselIndex + 1;
-                  carouselRef.current?.scrollToIndex({
-                    index: newIndex,
-                    animated: true
-                  });
-                  setActiveCarouselIndex(newIndex);
-                }}
-              >
-                <ChevronRight size={24} color="white" />
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-        
-        {/* Add favorite button */}
-        <TouchableOpacity
-          className="absolute top-3 right-3 w-9 h-9 bg-white/20 backdrop-blur-sm rounded-full items-center justify-center"
-          onPress={() => alert(`Added ${item.name} to favorites`)}
-        >
-          <Heart size={20} color="white" />
-        </TouchableOpacity>
-      </Box>
-    </TouchableOpacity>
-  );
-
-  // Render product card using Gluestack Card component with Tailwind
-  const renderProductCard = ({ item }: { item: Product }) => {
-    const handleAddToCart = async () => {
-      try {
-        await addItem(item, 1);
-        toast.show({
-          render: () => (
-            <Toast action="success" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Added to cart</ToastTitle>
-                <ToastDescription>{item.name} was added to your cart</ToastDescription>
-              </VStack>
-            </Toast>
-          )
-        });
-      } catch (error) {
-        toast.show({
-          render: () => (
-            <Toast action="error" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Error</ToastTitle>
-                <ToastDescription>Failed to add item to cart</ToastDescription>
-              </VStack>
-            </Toast>
-          )
-        });
-      }
-    };
-
+  // Render value proposition carousel items
+  const renderValuePropItem = ({ item, index }: { item: typeof valueProps[0], index: number }) => {
+    const Icon = item.icon;
+    
     return (
-      <TouchableOpacity 
-        onPress={() => navigateToProduct(item.id || '')}
-        className="w-[170px] mr-3"
-      >
-        <Card variant="elevated" size="md" className="overflow-hidden rounded-lg">
-          <Box className="relative">
-            <Image
-              source={{ uri: item.featuredImage || 'https://via.placeholder.com/300x300?text=Product' }}
-              className="w-full h-[130px]"
-              alt={item.name || 'Product'}
-              resizeMode="cover"
+      <View style={styles.valuePropSlide}>
+        <LinearGradient
+          colors={[item.color, `${item.color}DD`]}
+          start={{x: 0, y: 0}}
+          end={{x: 0, y: 1}}
+          style={styles.valuePropGradient}
+        >
+          <View style={styles.valuePropContentContainer}>
+            <View style={[styles.valuePropIconContainer, {backgroundColor: 'rgba(255,255,255,0.25)'}]}>
+              <Icon size={32} color="#ffffff" strokeWidth={2.5} />
+            </View>
+            <Text style={styles.valuePropTitle}>{item.title}</Text>
+            <Text style={styles.valuePropDescription}>{item.description}</Text>
+          </View>
+          
+          <TouchableOpacity
+            style={styles.learnMoreButton}
+            onPress={() => router.push('/(buyer)/shop')}
+          >
+            <Text style={styles.learnMoreText}>See Products</Text>
+            <ArrowRight size={15} color="#fff" style={{ marginLeft: 6 }} strokeWidth={2.5} />
+          </TouchableOpacity>
+        </LinearGradient>
+      </View>
+    );
+  };
+
+  // Carousel indicator dots
+  const renderCarouselIndicator = () => {
+    return (
+      <View style={styles.indicatorContainer}>
+        {valueProps.map((_, index) => {
+          const inputRange = [
+            (index - 1) * width,
+            index * width,
+            (index + 1) * width,
+          ];
+
+          const opacity = scrollX.interpolate({
+            inputRange,
+            outputRange: [0.4, 1, 0.4],
+            extrapolate: 'clamp',
+          });
+
+          const scale = scrollX.interpolate({
+            inputRange,
+            outputRange: [0.8, 1.2, 0.8],
+            extrapolate: 'clamp',
+          });
+
+          return (
+            <Animated.View
+              key={`indicator-${index}`}
+              style={[
+                styles.indicator,
+                { opacity, transform: [{ scale }] },
+                index === activeCarouselIndex && styles.activeIndicator,
+              ]}
             />
-            {item.discountPrice && item.discountPrice > 0 && (
-              <View className="absolute top-2 left-2 bg-red-500 px-2 py-0.5 rounded">
-                <Text className="text-xs text-white font-medium">
-                  {Math.round((1 - item.discountPrice / item.basePrice) * 100)}% OFF
-                </Text>
-              </View>
-            )}
-          </Box>
-          <Box className="p-3">
-            <Text className="text-sm font-medium text-gray-800 mb-1" numberOfLines={1}>
-              {item.name || 'Product Name'}
-            </Text>
-            <HStack className="flex-row items-center mb-1">
-              <Text className="text-base font-bold text-blue-600 mr-1.5">
-                ₹{(item.discountPrice && item.discountPrice > 0) ? item.discountPrice : item.basePrice}
-              </Text>
-              {(item.discountPrice && item.discountPrice > 0) && 
-                <Text className="text-xs text-gray-500 line-through">₹{item.basePrice}</Text>
-              }
-            </HStack>
-            <HStack className="flex-row justify-between items-center mb-2">
-              <Text className="text-xs text-gray-500">
-                Min. {item.stockQuantity && item.stockQuantity > 100 ? 10 : 5} units
-              </Text>
-              <HStack className="flex-row items-center">
-                <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                <Text className="text-xs ml-0.5 text-gray-500">
-                  {(Math.random() * 1 + 4).toFixed(1)}
-                </Text>
-              </HStack>
-            </HStack>
-            <HStack className="flex-row justify-between items-center">
-              <Button 
-                size="sm" 
-                variant="solid" 
-                className="flex-1 bg-blue-500 rounded-md h-7"
-                onPress={(e) => {
-                  e.stopPropagation(); // Prevent triggering navigation
-                  handleAddToCart();
-                }}
-                isDisabled={cartLoading}
-              >
-                <ButtonText className="text-xs text-white">
-                  {cartLoading ? 'Adding...' : 'Add to Cart'}
-                </ButtonText>
-              </Button>
-              <TouchableOpacity 
-                className="w-7 h-7 rounded-md bg-blue-50 justify-center items-center ml-2"
-                onPress={() => alert(`Chat about ${item.name || 'this product'}`)}
-              >
-                <MessageSquare size={16} color="#3B82F6" />
-              </TouchableOpacity>
-            </HStack>
-          </Box>
-        </Card>
+          );
+        })}
+      </View>
+    );
+  };
+
+  // Render industry cards with Lucide icons instead of images
+  const renderIndustryCard = ({ item }: { item: typeof industries[0] }) => {
+    // Get the appropriate Lucide icon dynamically based on the icon name
+    let IconComponent;
+    
+    switch (item.icon) {
+      case 'shirt':
+        IconComponent = Shirt;
+        break;
+      case 'cpu':
+        IconComponent = Cpu;
+        break;
+      case 'sofa':
+        IconComponent = Sofa;
+        break;
+      case 'tool':
+        IconComponent = Wrench;
+        break;
+      case 'utensils':
+        IconComponent = Utensils;
+        break;
+      default:
+        IconComponent = Package;
+    }
+    
+    return (
+      <TouchableOpacity
+        style={[styles.industryCard, { backgroundColor: item.color }]}
+        onPress={() => router.push(`/(buyer)/shop?category=${item.id}`)}
+      >
+        <View style={styles.industryIconContainer}>
+          <IconComponent size={48} color="#ffffff" />
+        </View>
+        <Text style={styles.industryName}>{item.name}</Text>
       </TouchableOpacity>
     );
   };
 
-  const renderCategoryButton = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      className="w-20 mr-3 items-center"
-      onPress={() => router.push('/(buyer)/shop')}
+  // Render featured product cards
+  const renderFeaturedProductCard = ({ item }: { item: Product }) => (
+    <TouchableOpacity
+      style={styles.featuredProductCard}
+      onPress={() => navigateToProduct(item.id || '')}
     >
-      <View className="w-12 h-12 rounded-full bg-blue-50 justify-center items-center mb-2">
-        {item.icon}
+      <Image
+        source={{ uri: item.featuredImage || 'https://via.placeholder.com/800x800?text=Product' }}
+        style={styles.featuredProductImage}
+      />
+      
+      <View style={styles.featuredProductInfo}>
+        <Text style={styles.featuredProductName} numberOfLines={1}>
+          {item.name}
+        </Text>
+        
+        <HStack style={styles.featuredProductPriceContainer}>
+          <Text style={styles.featuredProductPrice}>
+            ₹{(item.discountPrice && item.discountPrice > 0) ? item.discountPrice : item.basePrice}
+          </Text>
+          {(item.discountPrice && item.discountPrice > 0 && item.basePrice > item.discountPrice) && (
+            <Text style={styles.featuredProductOriginalPrice}>
+              ₹{item.basePrice}
+            </Text>
+          )}
+        </HStack>
+        
+        <View style={styles.savingsContainer}>
+          {(item.discountPrice && item.basePrice > item.discountPrice) && (
+            <Text style={styles.savingsText}>
+              {Math.round(((item.basePrice - item.discountPrice) / item.basePrice) * 100)}% below cost
+            </Text>
+          )}
+        </View>
       </View>
-      <Text className="text-xs text-gray-800 text-center">{item.name}</Text>
+      
+      <TouchableOpacity 
+        style={styles.quickAddButton}
+        onPress={(e) => {
+          e.stopPropagation();
+          addItem(item);
+        }}
+      >
+        <ShoppingCart size={18} color="#ffffff" />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
-  // Render dot indicators for carousel
-  const renderCarouselIndicator = () => {
-    return (
-      <HStack className="justify-center mt-3 mb-2">
-        {Array.from({ length: Math.min(5, featuredProducts.length) }).map((_, index) => (
-          <View 
-            key={index} 
-            className={`h-1.5 rounded-full mx-1 ${index === activeCarouselIndex ? 'w-5 bg-blue-500' : 'w-1.5 bg-gray-300'}`}
-          />
-        ))}
-      </HStack>
-    );
-  };
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-      <Box className="flex-1 bg-gray-50" style={{ paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }}>
-        <ScrollView 
-          className="flex-1" 
-          contentContainerClassName="pb-24"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Search Bar */}
-          <Box className="px-4 pt-2 pb-2">
-            <Input variant="outline" size="md" className="bg-white shadow-sm">
-              <InputSlot className="pl-3">
-                <InputIcon>
-                  <Search size={20} color="#6B7280" />
-                </InputIcon>
-              </InputSlot>
-              <InputField
-                placeholder="Search for products..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {searchQuery.length > 0 && (
-                <InputSlot className="pr-3">
-                  <InputIcon onPress={() => setSearchQuery('')}>
-                    <X size={18} color="#6B7280" />
-                  </InputIcon>
-                </InputSlot>
-              )}
-            </Input>
-          </Box>
-          
-          {/* Product Carousel */}
-          <Box className="mt-2">
-            {loading ? (
-              <Box className="h-[220px] justify-center items-center">
-                <Spinner size="large" color="#3B82F6" />
-              </Box>
-            ) : featuredProducts.length > 0 ? (
-              <>
-                <FlatList
-                  ref={carouselRef}
-                  data={featuredProducts.slice(0, 5)}
-                  renderItem={renderCarouselItem}
-                  keyExtractor={(item) => `carousel-${item.id || Math.random().toString()}`}
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
-                  onScroll={onCarouselScroll}
-                  onViewableItemsChanged={onCarouselViewableItemsChanged}
-                  viewabilityConfig={{ viewAreaCoveragePercentThreshold: 50 }}
-                  
-                  // Performance optimizations
-                  removeClippedSubviews={true}
-                  maxToRenderPerBatch={3} 
-                  initialNumToRender={1}
-                  windowSize={3}
-                  getItemLayout={(data, index) => ({
-                    length: CAROUSEL_ITEM_WIDTH,
-                    offset: CAROUSEL_ITEM_WIDTH * index,
-                    index,
-                  })}
-                />
-                {renderCarouselIndicator()}
-              </>
-            ) : (
-              <Box className="h-[220px] justify-center items-center">
-                <Text className="text-gray-500">No products found</Text>
-              </Box>
-            )}
-          </Box>
-
-          {/* Categories */}
-          <Box className="mt-4">
-            <HStack className="px-4 mb-3 justify-between items-center">
-              <Heading size="sm" className="text-lg font-semibold text-gray-800">Categories</Heading>
-              <TouchableOpacity onPress={() => router.push('/(buyer)/shop')}>
-                <HStack className="items-center">
-                  <Text className="text-sm text-blue-500 mr-1">See All</Text>
-                  <ArrowRight size={16} color="#3B82F6" />
-                </HStack>
+    <View style={[styles.container]}>
+      <StatusBar barStyle="light-content" />
+      
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <LinearGradient
+            colors={['#1a365d', '#2d3748']}
+            style={styles.heroGradient}
+          >
+            <View style={styles.heroContentContainer}>
+              <Text style={styles.heroTagline}>Source Inventory at Below-Cost Prices</Text>
+              <Text style={styles.heroSubtitle}>
+                Premium B2B marketplace for buying quality products at incredible discounts
+              </Text>
+              
+              <TouchableOpacity
+                style={styles.heroButton}
+                onPress={() => router.push('/(buyer)/shop')}
+              >
+                <Text style={styles.heroButtonText}>Explore Marketplace</Text>
+                <ArrowRight size={20} color="#1a365d" />
               </TouchableOpacity>
-            </HStack>
-            
+            </View>
+          </LinearGradient>
+        </View>
+        
+        {/* Value Proposition Carousel */}
+        <View style={styles.carouselSection}>
+          <Text style={styles.sectionTitle}>Benefits for Buyers</Text>
+          
+          <FlatList
+            ref={carouselRef}
+            data={valueProps}
+            renderItem={renderValuePropItem}
+            keyExtractor={(item) => `value-prop-${item.id}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={onCarouselScroll}
+            onViewableItemsChanged={onCarouselViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            scrollEventThrottle={16}
+          />
+          
+          {renderCarouselIndicator()}
+        </View>
+        
+        {/* Industries Section */}
+        <View style={styles.industriesSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Browse By Industry</Text>
+            <TouchableOpacity onPress={() => router.push('/(buyer)/shop')}>
+              <HStack style={styles.seeAllContainer}>
+                <Text style={styles.seeAllText}>See All</Text>
+                <ArrowRight size={16} color="#3B82F6" />
+              </HStack>
+            </TouchableOpacity>
+          </View>
+          
+          <FlatList
+            data={industries}
+            renderItem={renderIndustryCard}
+            keyExtractor={(item) => `industry-${item.id}`}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.industriesListContainer}
+          />
+        </View>
+        
+        {/* Bidding Section */}
+        <View style={styles.biddingSection}>
+          <TouchableOpacity
+            style={styles.biddingCard}
+            onPress={() => router.push('/(buyer)/bids')}
+          >
+            <LinearGradient
+              colors={['#4C1D95', '#7C3AED']}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 0}}
+              style={styles.biddingGradient}
+            >
+              <View style={styles.biddingContentRow}>
+                <View style={styles.biddingTextContainer}>
+                  <Text style={styles.biddingTitle}>Live Bidding</Text>
+                  <Text style={styles.biddingSubtitle}>
+                    Name your price on bulk inventory deals
+                  </Text>
+                  <View style={styles.biddingCTA}>
+                    <Text style={styles.biddingCTAText}>Start Bidding</Text>
+                    <ArrowRight size={16} color="#ffffff" strokeWidth={2.5} />
+                  </View>
+                </View>
+                
+                <View style={styles.biddingIconContainer}>
+                  <Gavel size={48} color="#ffffff" style={{ opacity: 0.95 }} strokeWidth={2} />
+                </View>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Featured Deals */}
+        <View style={styles.dealsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Below-Cost Deals</Text>
+            <TouchableOpacity onPress={() => router.push('/(buyer)/shop?deals=true')}>
+              <HStack style={styles.seeAllContainer}>
+                <Text style={styles.seeAllText}>See All</Text>
+                <ArrowRight size={16} color="#3B82F6" />
+              </HStack>
+            </TouchableOpacity>
+          </View>
+          
+          {loading ? (
+            <Center style={styles.loadingContainer}>
+              <Spinner size="large" color="#3B82F6" />
+              <Text style={styles.loadingText}>Finding the best deals...</Text>
+            </Center>
+          ) : featuredProducts.length > 0 ? (
             <FlatList
-              data={categories}
-              renderItem={renderCategoryButton}
-              keyExtractor={(item) => item.id}
+              data={featuredProducts}
+              renderItem={renderFeaturedProductCard}
+              keyExtractor={(item) => `deal-${item.id || Math.random().toString()}`}
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerClassName="pl-4 pr-2"
-              
-              // Performance optimizations
-              removeClippedSubviews={true}
-              maxToRenderPerBatch={5}
-              initialNumToRender={5}
-              windowSize={5}
-              getItemLayout={(data, index) => ({
-                length: 80 + 12, // width + margin
-                offset: (80 + 12) * index,
-                index,
-              })}
+              contentContainerStyle={styles.dealsListContainer}
             />
-          </Box>
-
-          {/* Featured Products */}
-          <Box className="mt-6">
-            <HStack className="px-4 mb-3 justify-between items-center">
-              <Heading size="sm" className="text-lg font-semibold text-gray-800">Featured Products</Heading>
-              <TouchableOpacity onPress={() => router.push('/(buyer)/shop')}>
-                <HStack className="items-center">
-                  <Text className="text-sm text-blue-500 mr-1">See All</Text>
-                  <ArrowRight size={16} color="#3B82F6" />
-                </HStack>
-              </TouchableOpacity>
-            </HStack>
-            
-            {loading ? (
-              <Box className="h-[200px] justify-center items-center">
-                <Spinner size="large" color="#3B82F6" />
-              </Box>
-            ) : featuredProducts.length > 0 ? (
-              <FlatList
-                data={featuredProducts.slice(5, 13)}
-                renderItem={renderProductCard}
-                keyExtractor={(item) => `featured-${item.id || Math.random().toString()}`}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerClassName="pl-4 pr-2"
-                
-                // Performance optimizations
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={4}
-                initialNumToRender={2}
-                windowSize={5}
-                getItemLayout={(data, index) => ({
-                  length: 170 + 12, // card width + margin
-                  offset: (170 + 12) * index,
-                  index,
-                })}
-              />
-            ) : (
-              <Box className="h-[200px] justify-center items-center">
-                <Text className="text-gray-500">No featured products found</Text>
-              </Box>
-            )}
-          </Box>
-
-          {/* Special Offer Banner */}
-          <TouchableOpacity 
-            className="mt-8 mx-4"
-            onPress={() => router.push('/(buyer)/shop?promo=summer')}
+          ) : (
+            <Center style={styles.emptyStateContainer}>
+              <Text style={styles.emptyStateText}>Check back soon for fresh deals!</Text>
+            </Center>
+          )}
+        </View>
+        
+        {/* Call to Action */}
+        <TouchableOpacity 
+          style={styles.ctaContainer}
+          onPress={() => router.push('/(buyer)/shop')} // Navigate directly to shop
+        >
+          <LinearGradient
+            colors={['#1a365d', '#2d3748']}
+            style={styles.ctaGradient}
           >
-            <CustomGradient
-              colors={['#3B82F6', '#8B5CF6']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0.8 }}
-              className="rounded-2xl overflow-hidden"
-            >
-              <Box className="px-6 py-6 relative">
-                <HStack className="justify-between items-center">
-                  <VStack className="flex-2 pr-6">
-                    <Box className="bg-white/20 self-start px-3 py-1 rounded-full mb-2">
-                      <Text className="text-white/90 text-xs font-semibold">LIMITED TIME</Text>
-                    </Box>
-                    <Text className="text-white text-2xl font-bold mb-2">Summer Sale!</Text>
-                    <Text className="text-white/90 mb-4 text-base" numberOfLines={2}>
-                      Get up to 40% off on selected items this season
-                    </Text>
-                    <TouchableOpacity className="bg-white self-start px-5 py-2.5 rounded-lg shadow-sm">
-                      <Text className="font-semibold text-blue-600">Shop Now</Text>
-                    </TouchableOpacity>
-                  </VStack>
-                  <Box className="absolute right-4 top-1/2 -translate-y-1/2">
-                    <View className="w-28 h-28 bg-white/25 backdrop-blur-md rounded-full justify-center items-center shadow-lg">
-                      <Text className="text-white font-bold text-4xl">40%</Text>
-                      <Text className="text-white font-bold text-xl">OFF</Text>
-                    </View>
-                  </Box>
-                </HStack>
-              </Box>
-            </CustomGradient>
-          </TouchableOpacity>
-
-          {/* Popular Products */}
-          <Box className="mt-6">
-            <HStack className="px-4 mb-3 justify-between items-center">
-              <Heading size="sm" className="text-lg font-semibold text-gray-800">Popular Products</Heading>
-              <TouchableOpacity onPress={() => router.push('/(buyer)/shop')}>
-                <HStack className="items-center">
-                  <Text className="text-sm text-blue-500 mr-1">See All</Text>
-                  <ArrowRight size={16} color="#3B82F6" />
-                </HStack>
-              </TouchableOpacity>
-            </HStack>
-            
-            {loading ? (
-              <Box className="h-[200px] justify-center items-center">
-                <Spinner size="large" color="#3B82F6" />
-              </Box>
-            ) : popularProducts.length > 0 ? (
-              <View className="flex-row flex-wrap justify-between px-4">
-                {popularProducts.slice(0, 4).map((product) => (
-                  <TouchableOpacity 
-                    key={`popular-${product.id || Math.random().toString()}`}
-                    className="w-[48%] mb-4"
-                    onPress={() => router.push(`/product/${product.id || ''}`)}
-                  >
-                    <Card variant="elevated" size="sm" className="overflow-hidden rounded-lg">
-                      <Box className="relative">
-                        <Image
-                          source={{ uri: product.featuredImage || 'https://via.placeholder.com/300x300?text=Product' }}
-                          className="w-full h-[120px]"
-                          alt={product.name || 'Product'}
-                          resizeMode="cover"
-                        />
-                        {product.discountPrice && product.discountPrice > 0 && (
-                          <View className="absolute top-2 left-2 bg-red-500 px-2 py-0.5 rounded">
-                            <Text className="text-xs text-white font-medium">
-                              {Math.round((1 - product.discountPrice / product.basePrice) * 100)}% OFF
-                            </Text>
-                          </View>
-                        )}
-                      </Box>
-                      <Box className="p-2.5">
-                        <Text className="text-sm font-medium text-gray-800 mb-1" numberOfLines={1}>
-                          {product.name || 'Product Name'}
-                        </Text>
-                        <HStack className="flex-row items-center mb-1">
-                          <Text className="text-[15px] font-bold text-blue-600 mr-1.5">
-                            ₹{(product.discountPrice && product.discountPrice > 0) ? product.discountPrice : product.basePrice}
-                          </Text>
-                          {(product.discountPrice && product.discountPrice > 0) && (
-                            <Text className="text-xs text-gray-500 line-through">₹{product.basePrice}</Text>
-                          )}
-                        </HStack>
-                        <HStack className="flex-row justify-between items-center mb-2">
-                          <Text className="text-xs text-gray-500">
-                            Min. {product.stockQuantity && product.stockQuantity > 100 ? 10 : 5} units
-                          </Text>
-                          <HStack className="flex-row items-center">
-                            <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                            <Text className="text-xs ml-0.5 text-gray-500">
-                              {(Math.random() * 1 + 4).toFixed(1)}
-                            </Text>
-                          </HStack>
-                        </HStack>
-                      </Box>
-                      <TouchableOpacity 
-                        className="flex-row items-center justify-center py-2 bg-blue-500"
-                        onPress={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            await addItem(product, 1);
-                            toast.show({
-                              render: () => (
-                                <Toast action="success" variant="solid">
-                                  <VStack space="xs">
-                                    <ToastTitle>Added to cart</ToastTitle>
-                                    <ToastDescription>{product.name} was added to your cart</ToastDescription>
-                                  </VStack>
-                                </Toast>
-                              )
-                            });
-                          } catch (error) {
-                            toast.show({
-                              render: () => (
-                                <Toast action="error" variant="solid">
-                                  <VStack space="xs">
-                                    <ToastTitle>Error</ToastTitle>
-                                    <ToastDescription>Failed to add item to cart</ToastDescription>
-                                  </VStack>
-                                </Toast>
-                              )
-                            });
-                          }
-                        }}
-                        disabled={cartLoading}
-                      >
-                        <ShoppingCart size={14} color="white" />
-                        <Text className="text-xs ml-1 text-white font-medium">Add to Cart</Text>
-                      </TouchableOpacity>
-                    </Card>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : (
-              <Box className="h-[200px] justify-center items-center">
-                <Text className="text-gray-500">No popular products found</Text>
-              </Box>
-            )}
-          </Box>
-
-          {/* Daily Deals Banner */}
-          <TouchableOpacity 
-            className="mt-2 mx-4"
-            onPress={() => router.push('/(buyer)/shop?deals=daily')}
-          >
-            <Box className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-              <HStack className="justify-between items-center">
-                <VStack className="flex-2">
-                  <Text className="text-amber-800 font-medium mb-1">TODAY'S DEAL</Text>
-                  <Text className="text-gray-800 text-lg font-bold mb-1">Flash Sale on Electronics</Text>
-                  <Text className="text-gray-600 text-sm mb-2">Ends in 6 hours</Text>
-                  <Button size="sm" className="self-start bg-amber-500 border-0">
-                    <ButtonText className="text-white">View Deals</ButtonText>
-                  </Button>
-                </VStack>
-                <Box className="flex-1 items-center">
-                  <View className="w-20 h-20 bg-amber-100 rounded-full justify-center items-center">
-                    <Text className="text-amber-800 font-bold text-lg">Up to</Text>
-                    <Text className="text-amber-800 font-bold text-2xl">50%</Text>
-                  </View>
-                </Box>
-              </HStack>
-            </Box>
-          </TouchableOpacity>
-        </ScrollView>
-      </Box>
-    </SafeAreaView>
+            <Text style={styles.ctaTitle}>Ready to find amazing deals?</Text>
+            <Text style={styles.ctaDescription}>
+              Join thousands of businesses sourcing inventory at below-market prices.
+            </Text>
+            <View style={styles.ctaButton}>
+              <Text style={styles.ctaButtonText}>Browse All Products</Text>
+              <ArrowRight size={18} color="#1a365d" />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
+        
+        {/* About Platform */}
+        <View style={styles.aboutSection}>
+          <Text style={styles.aboutTitle}>About Our B2B Platform</Text>
+          <Text style={styles.aboutDescription}>
+            We connect buyers like you with quality inventory at below-market prices.
+            Our platform gives you access to exclusive deals on premium products, overstock items,
+            and bulk purchasing opportunities across multiple industries.
+          </Text>
+          
+          <View style={styles.statContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>5000+</Text>
+              <Text style={styles.statLabel}>Happy Buyers</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>₹50Cr+</Text>
+              <Text style={styles.statLabel}>Savings Generated</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>15+</Text>
+              <Text style={styles.statLabel}>Industries</Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  heroSection: {
+    height: 380,
+    marginBottom: 26,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  heroGradient: {
+    height: '100%',
+    width: '100%',
+    justifyContent: 'center',
+    padding: 0,
+  },
+  heroContentContainer: {
+    padding: 28,
+    paddingTop: 50,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    height: '100%',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  heroTagline: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 16,
+    maxWidth: '90%',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 0.5,
+    lineHeight: 44,
+  },
+  heroSubtitle: {
+    fontSize: 17,
+    color: '#E2E8F0',
+    marginBottom: 34,
+    maxWidth: '85%',
+    lineHeight: 24,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  heroButton: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  heroButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a365d',
+  },
+  carouselSection: {
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#1A202C',
+    marginBottom: 18,
+    paddingHorizontal: 20,
+    letterSpacing: 0.3,
+  },
+  valuePropSlide: {
+    width: width,
+    paddingHorizontal: 20,
+  },
+  valuePropGradient: {
+    borderRadius: 18,
+    padding: 24,
+    height: 240,
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  valuePropContentContainer: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  valuePropIconContainer: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+  },
+  valuePropTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  },
+  valuePropDescription: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    marginBottom: 0,
+    lineHeight: 20,
+    opacity: 0.9,
+    maxWidth: '95%',
+    letterSpacing: 0.2,
+  },
+  learnMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  learnMoreText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+  indicatorContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 4,
+  },
+  indicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#CBD5E0',
+    marginHorizontal: 5,
+    opacity: 0.6,
+  },
+  activeIndicator: {
+    backgroundColor: '#3B82F6',
+    width: 22,
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 5,
+  },
+  industriesSection: {
+    marginBottom: 25,
+  },
+  biddingSection: {
+    marginHorizontal: 20,
+    marginBottom: 32,
+  },
+  biddingCard: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  biddingGradient: {
+    padding: 26,
+  },
+  biddingContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  biddingTextContainer: {
+    flex: 1,
+    paddingRight: 20,
+  },
+  biddingTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#ffffff',
+    marginBottom: 10,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    letterSpacing: 0.4,
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  biddingSubtitle: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    marginBottom: 18,
+    lineHeight: 20,
+    maxWidth: '95%',
+  },
+  biddingCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
+    marginTop: 4,
+  },
+  biddingCTAText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    marginRight: 8,
+    fontSize: 15,
+  },
+  biddingIconContainer: {
+    width: 90,
+    height: 90,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 45,
+  },
+  biddingIcon: {
+    width: 70,
+    height: 70,
+    tintColor: 'rgba(255,255,255,0.9)',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 18,
+  },
+  seeAllContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  seeAllText: {
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  industriesListContainer: {
+    paddingHorizontal: 20,
+    paddingRight: 10,
+    gap: 16,
+    paddingBottom: 8,
+    paddingTop: 4,
+  },
+  industryCard: {
+    width: 130,
+    height: 150,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  industryIconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginBottom: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  industryName: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  dealsSection: {
+    marginBottom: 30,
+  },
+  dealsListContainer: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  featuredProductCard: {
+    width: 190,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    marginRight: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)',
+  },
+  featuredProductImage: {
+    width: '100%',
+    height: 190,
+    resizeMode: 'cover',
+  },
+  featuredProductInfo: {
+    padding: 14,
+    paddingBottom: 16,
+  },
+  featuredProductName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A202C',
+    marginBottom: 6,
+  },
+  featuredProductPriceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  featuredProductPrice: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#3B82F6',
+  },
+  featuredProductOriginalPrice: {
+    fontSize: 14,
+    color: '#A0AEC0',
+    textDecorationLine: 'line-through',
+  },
+  savingsContainer: {
+    marginTop: 4,
+  },
+  savingsText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
+  },
+  quickAddButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  loadingContainer: {
+    height: 200,
+  },
+  loadingText: {
+    marginTop: 8,
+    color: '#718096',
+  },
+  emptyStateContainer: {
+    height: 200,
+  },
+  emptyStateText: {
+    color: '#718096',
+    fontSize: 16,
+  },
+  ctaContainer: {
+    marginHorizontal: 20,
+    marginBottom: 30,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  ctaGradient: {
+    padding: 24,
+  },
+  ctaTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  ctaDescription: {
+    fontSize: 14,
+    color: '#E2E8F0',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+  },
+  ctaButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a365d',
+  },
+  aboutSection: {
+    paddingHorizontal: 20,
+  },
+  aboutTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A202C',
+    marginBottom: 12,
+  },
+  aboutDescription: {
+    fontSize: 14,
+    color: '#4A5568',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  statContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#3B82F6',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#718096',
+    textAlign: 'center',
+  },
+  divider: {
+    width: 1,
+    height: '80%',
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center',
+  }
+});

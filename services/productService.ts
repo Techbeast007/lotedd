@@ -398,21 +398,16 @@ export const getRelatedProducts = async (category: string, currentProductId: str
     const firestore = getFirestore();
     const productsRef = collection(firestore, 'products');
     const categoryMap = getCategoryMapping();
-    
-    // First approach: Get all products with the same category and filter out the current one
+    let relatedProducts: Product[] = [];
+
     try {
       // Try to match by both name and ID
       const isNumericCategory = !isNaN(Number(category));
-      
-      // Get products by category name
-      let q = query(
-        productsRef,
-        where('category', '==', category)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      let relatedProducts: Product[] = [];
-      
+
+      // 1. Try by category name
+      let q = query(productsRef, where('category', '==', category));
+      let querySnapshot = await getDocs(q);
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         if (doc.id !== currentProductId) {
@@ -420,83 +415,92 @@ export const getRelatedProducts = async (category: string, currentProductId: str
             id: doc.id,
             ...data,
           } as Product;
-          
-          // Add category name if missing but has ID
           if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
             product.category = categoryMap[String(product.categoryId)];
           }
-          
           relatedProducts.push(product);
         }
       });
-      
-      // If we didn't get enough results, try with categoryId field instead
+
+      if (relatedProducts.length >= limitCount) {
+        return relatedProducts.slice(0, limitCount);
+      }
+
+      // 2. If not enough results, try by category ID (numeric)
       if (relatedProducts.length < limitCount && isNumericCategory) {
-        const altQuery = query(
-          productsRef,
-          where('categoryId', '==', category)
-        );
-        
-        const additionalSnapshot = await getDocs(altQuery);
-        additionalSnapshot.forEach((doc) => {
-          if (doc.id !== currentProductId && !relatedProducts.some(p => p.id === doc.id)) {
+        q = query(productsRef, where('categoryId', '==', category));
+        querySnapshot = await getDocs(q);
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (doc.id !== currentProductId) {
             const product = {
               id: doc.id,
-              ...doc.data(),
+              ...data,
             } as Product;
-            
-            // Add category name if missing but has ID
             if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
               product.category = categoryMap[String(product.categoryId)];
             }
-            
             relatedProducts.push(product);
           }
         });
       }
-      
-      // Shuffle and limit results
-      return relatedProducts
-        .sort(() => 0.5 - Math.random())
-        .slice(0, limitCount);
-        
-    } catch (error) {
-      console.error('Error with query, falling back to simple approach:', error);
-      
-      // Fallback: get all products and filter manually
-      const simpleQuery = query(productsRef);
-      const querySnapshot = await getDocs(simpleQuery);
-      
-      let relatedProducts: Product[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        const categoryMatches = 
-          data.category === category || 
-          data.categoryName === category ||
-          String(data.categoryId) === category ||
-          data.categoryId === Number(category);
-          
-        if (doc.id !== currentProductId && categoryMatches) {
-          const product = {
-            id: doc.id,
-            ...data,
-          } as Product;
-          
-          // Add category name if missing but has ID
-          if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
-            product.category = categoryMap[String(product.categoryId)];
+
+      if (relatedProducts.length >= limitCount) {
+        return relatedProducts.slice(0, limitCount);
+      }
+
+      // 3. If still not enough, try by category ID (string)
+      if (relatedProducts.length < limitCount) {
+        q = query(productsRef, where('categoryId', '==', Number(category)));
+        querySnapshot = await getDocs(q);
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (doc.id !== currentProductId) {
+            const product = {
+              id: doc.id,
+              ...data,
+            } as Product;
+            if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+              product.category = categoryMap[String(product.categoryId)];
+            }
+            relatedProducts.push(product);
           }
-          
-          relatedProducts.push(product);
-        }
-      });
-      
-      return relatedProducts
-        .sort(() => 0.5 - Math.random())
-        .slice(0, limitCount);
+        });
+      }
+
+      if (relatedProducts.length >= limitCount) {
+        return relatedProducts.slice(0, limitCount);
+      }
+
+      // 4. As a last resort, try by categoryName
+      if (relatedProducts.length < limitCount) {
+        q = query(productsRef, where('categoryName', '==', category));
+        querySnapshot = await getDocs(q);
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (doc.id !== currentProductId) {
+            const product = {
+              id: doc.id,
+              ...data,
+            } as Product;
+            if (product.categoryId && !product.category && categoryMap[String(product.categoryId)]) {
+              product.category = categoryMap[String(product.categoryId)];
+            }
+            relatedProducts.push(product);
+          }
+        });
+      }
+
+      return relatedProducts.slice(0, limitCount);
+    } catch (error) {
+      console.error('Error fetching related products:', error);
+      return [];
     }
   } catch (error) {
-    console.error('Error getting related products:', error);
+    console.error('Error in getRelatedProducts:', error);
     return [];
   }
 };

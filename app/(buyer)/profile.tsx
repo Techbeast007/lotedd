@@ -10,15 +10,15 @@ import firestore from '@react-native-firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import {
-    Bell,
-    ChevronRight,
-    CreditCard,
-    Heart,
-    HelpCircle, LogOut,
-    MapPin,
-    Settings,
-    ShoppingBag,
-    User
+  Bell,
+  ChevronRight,
+  CreditCard,
+  Heart,
+  HelpCircle, LogOut,
+  MapPin,
+  Settings,
+  ShoppingBag,
+  User
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -134,17 +134,17 @@ export default function ProfileScreen() {
         { 
           icon: <User size={20} color="#374151" />, 
           label: 'Personal Information', 
-          onPress: () => router.push('/buyer/settings/personal')
+          onPress: () => router.push('/settings/personal')
         },
         { 
           icon: <MapPin size={20} color="#374151" />, 
           label: 'Addresses', 
-          onPress: () => router.push('/buyer/settings/addresses')
+          onPress: () => router.push('/settings/addresses')
         },
         { 
           icon: <CreditCard size={20} color="#374151" />, 
           label: 'Payment Methods', 
-          onPress: () => router.push('/buyer/settings/payment')
+          onPress: () => router.push('/settings/payment')
         },
       ]
     },
@@ -159,7 +159,7 @@ export default function ProfileScreen() {
         { 
           icon: <Heart size={20} color="#374151" />, 
           label: 'Saved Items', 
-          onPress: () => router.push('/(buyer)/saved')
+          onPress: () => router.push('/settings/saved')
         }
       ]
     },
@@ -169,12 +169,12 @@ export default function ProfileScreen() {
         { 
           icon: <Bell size={20} color="#374151" />, 
           label: 'Notifications', 
-          onPress: () => router.push('/(buyer)/settings/notifications')
+          onPress: () => router.push('/settings/notifications')
         },
         { 
           icon: <Settings size={20} color="#374151" />, 
           label: 'App Settings', 
-          onPress: () => router.push('/(buyer)/settings/app')
+          onPress: () => router.push('/settings/app')
         }
       ]
     },
@@ -184,7 +184,7 @@ export default function ProfileScreen() {
         { 
           icon: <HelpCircle size={20} color="#374151" />, 
           label: 'Help & FAQ', 
-          onPress: () => router.push('/buyer/help')
+          onPress: () => router.push('/settings/help')
         },
         { 
           icon: <LogOut size={20} color="#F43F5E" />, 
@@ -249,7 +249,7 @@ export default function ProfileScreen() {
           <Text style={styles.userContact}>{userData.phoneNumber}</Text>
           {userData.email && <Text style={styles.userContact}>{userData.email}</Text>}
           
-          <TouchableOpacity style={styles.editProfileButton} onPress={() => router.push('/buyer/settings/personal')}>
+          <TouchableOpacity style={styles.editProfileButton} onPress={() => router.push('/settings/personal')}>
             <Text style={styles.editProfileButtonText}>Edit Profile</Text>
           </TouchableOpacity>
         </Box>

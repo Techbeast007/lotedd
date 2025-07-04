@@ -14,6 +14,7 @@ import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/t
 import { VStack } from '@/components/ui/vstack';
 import { useCart } from '@/services/context/CartContext';
 import { Product, getProducts } from '@/services/productService';
+import { addToWishlist, getWishlistStatus, removeFromWishlist } from '@/services/wishlistService';
 import { useRouter } from 'expo-router';
 import {
   ArrowUpDown,
@@ -280,6 +281,7 @@ export default function ShopScreen() {
   const [error, setError] = useState<string | null>(null);
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [loadingWishlist, setLoadingWishlist] = useState(false);
   
   // UI state
   const [viewMode, setViewMode] = useState('grid');
@@ -317,12 +319,42 @@ export default function ShopScreen() {
           ]);
         }
       }
+      
+      // Load wishlist data
+      await loadWishlistData();
     } catch (err) {
       console.error('Failed to fetch products:', err);
       setError('Could not load products. Please try again.');
     } finally {
       setIsLoading(false);
       setRefreshing(false);
+    }
+  };
+  
+  // Load wishlist data
+  const loadWishlistData = async () => {
+    try {
+      setLoadingWishlist(true);
+      
+      // Get current user ID (replace with actual auth logic)
+      const userId = 'current-user-id'; // Replace with actual auth user ID
+      
+      // In a real app, you would iterate through products and check their wishlist status
+      // This is a simplified example - in production code you would use a batch operation
+      const wishlistProducts: string[] = [];
+      
+      for (const product of products) {
+        const isInWishlist = await getWishlistStatus(userId, product.id);
+        if (isInWishlist) {
+          wishlistProducts.push(product.id);
+        }
+      }
+      
+      setFavorites(wishlistProducts);
+    } catch (error) {
+      console.error('Error loading wishlist data:', error);
+    } finally {
+      setLoadingWishlist(false);
     }
   };
   
@@ -373,15 +405,64 @@ export default function ShopScreen() {
   }, [addItem, toast]);
   
   // Toggle favorite products
-  const handleToggleFavorite = useCallback((product) => {
-    setFavorites(prev => {
-      if (prev.includes(product.id)) {
-        return prev.filter(id => id !== product.id);
+  const handleToggleFavorite = useCallback(async (product) => {
+    try {
+      // Get current user ID (replace with actual auth logic)
+      const userId = 'current-user-id'; // Replace with actual auth user ID
+      
+      if (favorites.includes(product.id)) {
+        // Remove from wishlist
+        await removeFromWishlist(userId, product.id);
+        setFavorites(prev => prev.filter(id => id !== product.id));
+        
+        toast.show({
+          render: () => (
+            <Toast action="info" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Removed from wishlist</ToastTitle>
+                <ToastDescription>{product.name} was removed from your wishlist</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
       } else {
-        return [...prev, product.id];
+        // Add to wishlist
+        await addToWishlist(userId, {
+          productId: product.id,
+          name: product.name,
+          basePrice: product.basePrice,
+          discountPrice: product.discountPrice,
+          featuredImage: product.featuredImage,
+          brand: product.brand,
+          addedAt: new Date()
+        });
+        setFavorites(prev => [...prev, product.id]);
+        
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Added to wishlist</ToastTitle>
+                <ToastDescription>{product.name} was added to your wishlist</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
       }
-    });
-  }, []);
+    } catch (error) {
+      console.error('Error updating wishlist:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <VStack space="xs">
+              <ToastTitle>Error</ToastTitle>
+              <ToastDescription>Failed to update wishlist</ToastDescription>
+            </VStack>
+          </Toast>
+        )
+      });
+    }
+  }, [favorites, toast]);
   
   // Filter products
   const filteredProducts = useMemo(() => {
@@ -1087,8 +1168,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#EEF2F6',
     zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 2,
   },
   searchContainer: {
     alignItems: 'center',
@@ -1136,8 +1222,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   activeCategoryPill: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
+    backgroundColor: '#3B82F6', // Our accent blue color for selected pills
+    borderColor: '#3B82F6',
   },
   categoryText: {
     fontSize: 14,
@@ -1145,7 +1231,7 @@ const styles = StyleSheet.create({
     color: '#475569',
   },
   activeCategoryText: {
-    color: '#FFFFFF',
+    color: '#FFFFFF', // White text color when pill is selected
     fontWeight: '600',
   },
   
@@ -1364,6 +1450,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  activeFilterChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   addToCartText: {
     fontSize: 14,
