@@ -12,8 +12,7 @@ import firestore from '@react-native-firebase/firestore';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-
+import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 interface NotificationSettings {
   orderUpdates: boolean;
@@ -32,9 +31,10 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Default notification settings
-  const [settings, setSettings] = useState<NotificationSettings>({
+  const defaultSettings = React.useMemo(() => ({
     orderUpdates: true,
     promotions: true,
     priceAlerts: true,
@@ -45,31 +45,54 @@ export default function NotificationsScreen() {
     email: true,
     push: true,
     sms: false,
-  });
+  }), []);
+  
+  const [settings, setSettings] = useState<NotificationSettings>(defaultSettings);
 
+  // Fetch user settings on component mount
   useEffect(() => {
-    fetchUserSettings();
-  }, []);
-
-  const fetchUserSettings = async () => {
-    try {
-      setIsLoading(true);
-      
-      const user = await AsyncStorage.getItem('user');
-      if (user) {
+    const fetchUserSettings = async () => {
+      try {
+        setIsLoading(true);
+        
+        const user = await AsyncStorage.getItem('user');
+        if (!user) {
+          Alert.alert(
+            'Not Logged In',
+            'Please log in to manage your notification settings.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        }
+        
         const parsedUser = JSON.parse(user);
         setUserId(parsedUser.uid);
         
-        // Fetch user notification settings if they exist
+        // Fetch user notification settings
         const settingsDoc = await firestore()
           .collection('users')
           .doc(parsedUser.uid)
           .collection('settings')
           .doc('notifications')
           .get();
-          
-        if (settingsDoc.exists) {
-          setSettings(settingsDoc.data() as NotificationSettings);
+        
+        // Check if document exists and has data
+        if (settingsDoc.exists && typeof settingsDoc.data === 'function') {
+          const data = settingsDoc.data() || {};
+          // Create validated settings object with proper boolean values
+          const validatedSettings: NotificationSettings = {
+            orderUpdates: Boolean(data.orderUpdates),
+            promotions: Boolean(data.promotions),
+            priceAlerts: Boolean(data.priceAlerts),
+            newArrivals: Boolean(data.newArrivals),
+            stockAlerts: Boolean(data.stockAlerts),
+            recommendations: Boolean(data.recommendations),
+            chat: Boolean(data.chat),
+            email: Boolean(data.email),
+            push: Boolean(data.push),
+            sms: Boolean(data.sms),
+          };
+          setSettings(validatedSettings);
         } else {
           // If no settings exist, create default settings
           await firestore()
@@ -77,26 +100,40 @@ export default function NotificationsScreen() {
             .doc(parsedUser.uid)
             .collection('settings')
             .doc('notifications')
-            .set(settings);
+            .set(defaultSettings);
         }
+      } catch (error) {
+        console.error('Error fetching notification settings:', error);
+        Alert.alert('Error', 'Failed to load notification settings. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching notification settings:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    fetchUserSettings();
+  }, [router, defaultSettings]);
 
   const handleToggleSetting = async (setting: keyof NotificationSettings) => {
     try {
-      if (!userId) return;
+      if (!userId) {
+        Alert.alert('Error', 'You need to be logged in to change settings.');
+        return;
+      }
       
+      // Ensure we're working with boolean values
+      const currentValue = Boolean(settings[setting]);
+      
+      // Create a new settings object with the updated value
       const newSettings = {
         ...settings,
-        [setting]: !settings[setting],
+        [setting]: !currentValue,
       };
       
+      // Update local state immediately for responsive UI
       setSettings(newSettings);
+      
+      // Show saving indicator
+      setIsSaving(true);
       
       // Update settings in Firestore
       await firestore()
@@ -105,12 +142,15 @@ export default function NotificationsScreen() {
         .collection('settings')
         .doc('notifications')
         .set(newSettings);
+        
     } catch (error) {
       console.error('Error updating notification settings:', error);
       Alert.alert('Error', 'Failed to update notification settings. Please try again.');
       
       // Revert the change in UI if save fails
       setSettings(settings);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -131,9 +171,10 @@ export default function NotificationsScreen() {
       </VStack>
       <Switch
         size="sm"
-        value={settings[setting]}
+        value={Boolean(settings?.[setting])}
         onToggle={() => handleToggleSetting(setting)}
         trackColor={{ false: "#D1D5DB", true: "#3B82F6" }}
+        disabled={isLoading || isSaving}
       />
     </HStack>
   );
@@ -146,7 +187,13 @@ export default function NotificationsScreen() {
           <ArrowLeft size={24} color="#0F172A" />
         </TouchableOpacity>
         <Heading style={styles.headerTitle}>Notification Settings</Heading>
-        <View style={styles.placeholder} />
+        {(isLoading || isSaving) ? (
+          <View style={styles.placeholder}>
+            <ActivityIndicator size="small" color="#3B82F6" />
+          </View>
+        ) : (
+          <View style={styles.placeholder} />
+        )}
       </View>
       
       <Box style={styles.content}>
@@ -266,6 +313,8 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

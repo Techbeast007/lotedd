@@ -15,15 +15,15 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Briefcase, Edit2, Home, MapPin, Plus, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import uuid from 'react-native-uuid';
 import { WebView } from 'react-native-webview';
@@ -42,6 +42,14 @@ interface Address {
   isDefault: boolean;
   latitude?: number;
   longitude?: number;
+  accuracy?: number;
+  altitude?: number;
+  district?: string;
+  subregion?: string;
+  streetNumber?: string;
+  name?: string;
+  isoCountryCode?: string;
+  timestamp?: number;
 }
 
 export default function AddressesScreen() {
@@ -57,6 +65,8 @@ export default function AddressesScreen() {
     longitude: number;
   } | null>(null);
   const [locationPermissionStatus, setLocationPermissionStatus] = useState<string | null>(null);
+  const [locationDetailsVisible, setLocationDetailsVisible] = useState(false);
+  const [selectedAddressDetails, setSelectedAddressDetails] = useState<Address | null>(null);
 
   // New address state
   const [address, setAddress] = useState<Omit<Address, 'id'>>({
@@ -138,24 +148,56 @@ export default function AddressesScreen() {
       }
 
       setLoading(true);
-      const location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
+      
+      // Get more accurate location data with higher accuracy
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest
+      });
+      
+      const { 
+        latitude, 
+        longitude, 
+        accuracy, 
+        altitude 
+      } = location.coords;
       
       // Get address from coordinates
-      const geoAddress = await Location.reverseGeocodeAsync({ latitude, longitude });
+      const geoAddress = await Location.reverseGeocodeAsync({ 
+        latitude, 
+        longitude 
+      });
       
       if (geoAddress && geoAddress.length > 0) {
         const locationInfo = geoAddress[0];
         
+        // Construct street address with street number if available
+        let fullStreetAddress = '';
+        if (locationInfo.streetNumber && locationInfo.street) {
+          fullStreetAddress = `${locationInfo.streetNumber} ${locationInfo.street}`;
+        } else if (locationInfo.street) {
+          fullStreetAddress = locationInfo.street;
+        } else if (locationInfo.name) {
+          fullStreetAddress = locationInfo.name; // Some locations only have names
+        }
+        
         setAddress({
           ...address,
-          addressLine1: locationInfo.street || '',
+          addressLine1: fullStreetAddress,
           city: locationInfo.city || '',
           state: locationInfo.region || '',
           postalCode: locationInfo.postalCode || '',
           country: locationInfo.country || '',
+          // Save extended location data
           latitude,
           longitude,
+          accuracy: accuracy || undefined,
+          altitude: altitude || undefined,
+          district: locationInfo.district || '',
+          subregion: locationInfo.subregion || '',
+          streetNumber: locationInfo.streetNumber || '',
+          name: locationInfo.name || '',
+          isoCountryCode: locationInfo.isoCountryCode || '',
+          timestamp: Date.now(),
         });
         
         // Close map modal if open
@@ -185,21 +227,39 @@ export default function AddressesScreen() {
       if (geoAddress && geoAddress.length > 0) {
         const locationInfo = geoAddress[0];
         
+        // Construct street address with street number if available
+        let fullStreetAddress = '';
+        if (locationInfo.streetNumber && locationInfo.street) {
+          fullStreetAddress = `${locationInfo.streetNumber} ${locationInfo.street}`;
+        } else if (locationInfo.street) {
+          fullStreetAddress = locationInfo.street;
+        } else if (locationInfo.name) {
+          fullStreetAddress = locationInfo.name; // Some locations only have names
+        }
+        
         setAddress({
           ...address,
-          addressLine1: locationInfo.street || '',
+          addressLine1: fullStreetAddress,
           city: locationInfo.city || '',
           state: locationInfo.region || '',
           postalCode: locationInfo.postalCode || '',
           country: locationInfo.country || '',
+          // Save extended location data
           latitude,
           longitude,
+          district: locationInfo.district || '',
+          subregion: locationInfo.subregion || '',
+          streetNumber: locationInfo.streetNumber || '',
+          name: locationInfo.name || '',
+          isoCountryCode: locationInfo.isoCountryCode || '',
+          timestamp: Date.now(),
         });
       }
       
       setMapModalVisible(false);
     } catch (error) {
       console.error('Error getting address from map selection:', error);
+      Alert.alert('Error', 'Failed to get address from map selection. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -251,10 +311,16 @@ export default function AddressesScreen() {
 
       setLoading(true);
       
-      // Create label if not provided
+      // Create label if not provided and ensure all fields are properly formatted
       const addressToSave = {
         ...address,
         label: address.label || `${address.type.charAt(0).toUpperCase() + address.type.slice(1)} Address`,
+        // Ensure all location data is saved properly
+        latitude: address.latitude !== undefined ? Number(address.latitude) : undefined,
+        longitude: address.longitude !== undefined ? Number(address.longitude) : undefined,
+        accuracy: address.accuracy !== undefined ? Number(address.accuracy) : undefined,
+        altitude: address.altitude !== undefined ? Number(address.altitude) : undefined,
+        timestamp: address.timestamp || Date.now(),
       };
       
       // If this is set to default, unset default on other addresses
@@ -470,6 +536,18 @@ export default function AddressesScreen() {
                         {addr.city}, {addr.state} {addr.postalCode}
                       </Text>
                       <Text style={styles.addressText}>{addr.country}</Text>
+                      {addr.latitude && addr.longitude && (
+                        <TouchableOpacity 
+                          onPress={() => {
+                            setSelectedAddressDetails(addr);
+                            setLocationDetailsVisible(true);
+                          }}
+                        >
+                          <Text style={styles.coordsText}>
+                            GPS: {addr.latitude.toFixed(6)}, {addr.longitude.toFixed(6)} ℹ️
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </VStack>
                   </HStack>
                   
@@ -676,9 +754,11 @@ export default function AddressesScreen() {
                 onPress={handleSaveAddress}
                 disabled={loading}
               >
-                <Text style={styles.saveButtonText}>
-                  {loading ? 'Saving...' : 'Save Address'}
-                </Text>
+                <HStack style={{alignItems: 'center', justifyContent: 'center', width: '100%'}}>
+                  <Text style={styles.saveButtonText}>
+                    {loading ? 'Saving...' : 'Save Address'}
+                  </Text>
+                </HStack>
               </Button>
             </ScrollView>
           </View>
@@ -755,6 +835,106 @@ export default function AddressesScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      {/* Location Details Modal */}
+      <Modal
+        visible={locationDetailsVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setLocationDetailsVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, styles.detailsModalContent]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Location Details</Text>
+              <TouchableOpacity onPress={() => setLocationDetailsVisible(false)}>
+                <Text style={styles.modalClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              {selectedAddressDetails && (
+                <>
+                  <View style={styles.detailsRow}>
+                    <Text style={styles.detailsLabel}>Address</Text>
+                    <Text style={styles.detailsValue}>{selectedAddressDetails.label}</Text>
+                  </View>
+                  
+                  <Divider style={[styles.divider, {marginVertical: 12}]} />
+
+                  {selectedAddressDetails.latitude && selectedAddressDetails.longitude && (
+                    <>
+                      <View style={styles.detailsRow}>
+                        <Text style={styles.detailsLabel}>Latitude</Text>
+                        <Text style={styles.detailsValue}>{selectedAddressDetails.latitude}</Text>
+                      </View>
+                      
+                      <View style={styles.detailsRow}>
+                        <Text style={styles.detailsLabel}>Longitude</Text>
+                        <Text style={styles.detailsValue}>{selectedAddressDetails.longitude}</Text>
+                      </View>
+                    </>
+                  )}
+                  
+                  {selectedAddressDetails.accuracy && (
+                    <View style={styles.detailsRow}>
+                      <Text style={styles.detailsLabel}>Accuracy</Text>
+                      <Text style={styles.detailsValue}>{selectedAddressDetails.accuracy} meters</Text>
+                    </View>
+                  )}
+                  
+                  {selectedAddressDetails.altitude && (
+                    <View style={styles.detailsRow}>
+                      <Text style={styles.detailsLabel}>Altitude</Text>
+                      <Text style={styles.detailsValue}>{selectedAddressDetails.altitude} meters</Text>
+                    </View>
+                  )}
+                  
+                  {selectedAddressDetails.district && (
+                    <View style={styles.detailsRow}>
+                      <Text style={styles.detailsLabel}>District</Text>
+                      <Text style={styles.detailsValue}>{selectedAddressDetails.district}</Text>
+                    </View>
+                  )}
+                  
+                  {selectedAddressDetails.subregion && (
+                    <View style={styles.detailsRow}>
+                      <Text style={styles.detailsLabel}>Subregion</Text>
+                      <Text style={styles.detailsValue}>{selectedAddressDetails.subregion}</Text>
+                    </View>
+                  )}
+                  
+                  {selectedAddressDetails.timestamp && (
+                    <View style={styles.detailsRow}>
+                      <Text style={styles.detailsLabel}>Timestamp</Text>
+                      <Text style={styles.detailsValue}>
+                        {new Date(selectedAddressDetails.timestamp).toLocaleString()}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  <TouchableOpacity
+                    style={styles.mapButton}
+                    onPress={() => {
+                      setLocationDetailsVisible(false);
+                      if (selectedAddressDetails.latitude && selectedAddressDetails.longitude) {
+                        setCurrentLocation({
+                          latitude: selectedAddressDetails.latitude,
+                          longitude: selectedAddressDetails.longitude
+                        });
+                        setMapModalVisible(true);
+                      }
+                    }}
+                  >
+                    <MapPin size={18} color="#FFFFFF" />
+                    <Text style={styles.mapButtonText}>View on Map</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -827,6 +1007,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 1,
+  },
+  coordsText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+    fontFamily: 'monospace',
   },
   divider: {
     backgroundColor: '#F3F4F6',
@@ -1010,11 +1196,14 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 40,
     alignItems: 'center',
+    minHeight: 52,
+    width: '100%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: '600',
     fontSize: 16,
+    textAlign: 'center',
   },
   locationButtonContainer: {
     marginTop: 16,
@@ -1084,5 +1273,45 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 16,
+  },
+  // Location details modal styles
+  detailsModalContent: {
+    maxHeight: '70%',
+    borderRadius: 16,
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  detailsLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  detailsValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    maxWidth: '60%',
+    textAlign: 'right',
+  },
+  mapButton: {
+    backgroundColor: '#3B82F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 24,
+    gap: 8,
+  },
+  mapButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

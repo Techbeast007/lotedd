@@ -3,6 +3,7 @@
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import "@/global.css";
 import { CartProvider } from "@/services/context/CartContext";
+import { ChatProvider } from "@/services/context/ChatContext";
 import { isFirebaseInitialized } from '@/services/firebaseService';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -271,9 +272,11 @@ export default function RootLayout() {
 
   return (
     <GluestackUIProvider mode="light">
-      <CartProvider>
-        <Slot />
-      </CartProvider>
+      <ChatProvider>
+        <CartProvider>
+          <Slot />
+        </CartProvider>
+      </ChatProvider>
     </GluestackUIProvider>
   );
 }

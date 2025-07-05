@@ -1,7 +1,8 @@
-import { Tabs } from 'expo-router';
-import { Gavel, Heart, Home, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
+import { useChatContext } from '@/services/context/ChatContext';
+import { Tabs, useRouter } from 'expo-router';
+import { Gavel, Heart, Home, MessageCircle, Search, ShoppingBag, ShoppingCart, User } from 'lucide-react-native';
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/Colors';
@@ -56,11 +57,38 @@ const styles = StyleSheet.create({
     top: -8,
     right: -2,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconButton: {
+    padding: 8,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
 });
 
 export default function BuyerTabLayout() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { unreadCount } = useChatContext();
   
   // Memoize tab bar icons to prevent unnecessary re-renders
   const renderIcon = useMemo(() => ({
@@ -212,7 +240,21 @@ export default function BuyerTabLayout() {
                 <Text style={styles.headerTrade}>B2B</Text>
               </Text>
             </View>
-            {/* We can add action buttons here later if needed */}
+            <View style={styles.headerRight}>
+              <TouchableOpacity 
+                style={styles.iconButton}
+                onPress={() => router.push('/messages')}
+              >
+                <MessageCircle size={22} color="#0F172A" />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         ),
         tabBarActiveTintColor: '#3B82F6',

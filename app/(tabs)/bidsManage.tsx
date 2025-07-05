@@ -10,38 +10,39 @@ import { HStack } from '@/components/ui/hstack';
 import { Image } from '@/components/ui/image';
 import { Input } from '@/components/ui/input';
 import {
-    Modal,
-    ModalBackdrop,
-    ModalBody,
-    ModalCloseButton,
-    ModalContent,
-    ModalFooter,
-    ModalHeader
+  Modal,
+  ModalBackdrop,
+  ModalBody,
+  ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader
 } from '@/components/ui/modal';
 import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
 import { useRouter } from 'expo-router';
-import { Activity, Calendar, Gavel, Package, Plus, ShoppingBag, Trash2, User } from 'lucide-react-native';
+import { Activity, Calendar, Gavel, MessageCircle, Package, Plus, ShoppingBag, Trash2, User } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 // Using custom date picker implementation with gluestack-ui components
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getCurrentUser } from '@/services/authService';
 import { Bid, BidOffer, createBid, deleteBid, getBidOffersByBidId, getBids, updateBidOfferStatus } from '@/services/biddingService';
+import { useChatContext } from '@/services/context/ChatContext';
 import { Product, getPopularProducts, getProductsByOwnerId } from '@/services/productService';
 
 export default function ManageBidsScreen() {
@@ -49,6 +50,7 @@ export default function ManageBidsScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const currentUser = getCurrentUser();
+  const { unreadCount } = useChatContext();
   
   // State management
   const [bids, setBids] = useState<Bid[]>([]);
@@ -451,8 +453,26 @@ export default function ManageBidsScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <Heading size="xl" style={styles.headerTitle}>Manage Bids</Heading>
-        <Text style={styles.headerSubtitle}>Create and manage your product bids</Text>
+        <View style={styles.headerLeft}>
+          <Heading size="xl" style={styles.headerTitle}>Manage Bids</Heading>
+          <Text style={styles.headerSubtitle}>Create and manage your product bids</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.messagesButton}
+          onPress={() => {
+            // Use replace instead of push to prevent stack navigation issues
+            router.replace('/messages');
+          }}
+        >
+          <MessageCircle size={24} color="#0F172A" />
+          {unreadCount > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
       
       {/* Tab Navigation */}
@@ -1322,6 +1342,12 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 24,
@@ -1332,6 +1358,32 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#64748B',
+  },
+  messagesButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: '#F1F5F9',
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   
   // Tab Bar Styles

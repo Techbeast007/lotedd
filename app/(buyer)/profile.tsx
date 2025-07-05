@@ -154,7 +154,7 @@ export default function ProfileScreen() {
         { 
           icon: <ShoppingBag size={20} color="#374151" />, 
           label: 'Orders', 
-          onPress: () => router.push('/(buyer)/orders')
+          onPress: () => router.push('/(buyer)')
         },
         { 
           icon: <Heart size={20} color="#374151" />, 

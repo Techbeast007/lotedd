@@ -11,23 +11,25 @@ import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Activity, ArrowLeft, Package, User } from 'lucide-react-native';
+import { Activity, ArrowLeft, MessageCircle, Package, User } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getCurrentUser } from '@/services/authService';
 import { Bid, BidOffer, getBidById, getBidOffersByBidId, listenToBid, listenToBidOffers, submitBidOffer } from '@/services/biddingService';
+import { ParticipantType } from '@/services/chatService';
+import { useChatContext } from '@/services/context/ChatContext';
 
 export default function BidDetailsScreen() {
   const params = useLocalSearchParams();
@@ -36,6 +38,7 @@ export default function BidDetailsScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const currentUser = getCurrentUser();
+  const { getOrCreateConversation } = useChatContext();
   
   // State management
   const [bid, setBid] = useState<Bid | null>(null);
@@ -153,6 +156,7 @@ export default function BidDetailsScreen() {
         bidAmount: bidAmountNum,
         quantity: bidQuantityNum,
         message: bidMessage,
+        buyerId: currentUser?.uid || '',
       });
       
       // Close modal
@@ -184,6 +188,72 @@ export default function BidDetailsScreen() {
       setIsSubmitting(false);
     }
   }, [bid, currentUser, bidAmount, bidQuantity, bidMessage, toast]);
+  
+  // Start chat with seller function
+  const handleChatWithSeller = async () => {
+    if (!currentUser || !bid) return;
+    
+    try {
+      // Ensure we have a valid seller ID
+      if (!bid.sellerId) {
+        console.error('Missing seller ID');
+        toast.show({
+          placement: "top",
+          render: () => (
+            <Toast action="error">
+              <ToastTitle>Error</ToastTitle>
+              <ToastDescription>Seller information is missing</ToastDescription>
+            </Toast>
+          )
+        });
+        return;
+      }
+      
+      // Get seller details - in a real app you might want to fetch the seller's name from user service
+      const sellerName = "Seller"; // Use a placeholder since we don't have seller name in the bid object
+      
+      // Create participant object with no undefined values
+      const sellerParticipant = {
+        id: bid.sellerId,
+        name: sellerName,
+        type: ParticipantType.SELLER,
+        // Don't include avatar field at all if it's not present
+      };
+      
+      // Create related object with no undefined values
+      const relatedToObject = {
+        type: 'product' as const,
+        id: bid.productId || '', // Empty string fallback
+        name: bid.productDetails?.name || 'Product' // Empty string fallback
+      };
+      
+      // Create or get existing conversation with proper validation
+      const conversationId = await getOrCreateConversation(
+        sellerParticipant,
+        relatedToObject
+      );
+      
+      // Navigate to chat
+      if (conversationId) {
+        // Use replace instead of push to prevent stack navigation issues
+        router.replace(`/messages/${conversationId}`);
+      } else {
+        throw new Error('Failed to create conversation');
+      }
+      
+    } catch (error) {
+      console.error('Failed to start chat:', error);
+      toast.show({
+        placement: "top",
+        render: () => (
+          <Toast action="error">
+            <ToastTitle>Could not start chat</ToastTitle>
+            <ToastDescription>Please try again later</ToastDescription>
+          </Toast>
+        )
+      });
+    }
+  };
   
   // Check if user has already bid
   const hasUserBid = bidOffers.some(offer => 
@@ -394,18 +464,32 @@ export default function BidDetailsScreen() {
         
         {/* Bid Button or Your Bid */}
         {!timeLeftInfo.expired && !hasUserBid ? (
-          <Button
-            variant="solid"
-            style={styles.placeBidButton}
-            onPress={() => setBidModalVisible(true)}
-          >
-            <ButtonText>Place Your Bid</ButtonText>
-          </Button>
+          <View>
+            <Button
+              variant="solid"
+              style={styles.placeBidButton}
+              onPress={() => setBidModalVisible(true)}
+            >
+              <ButtonText>Place Your Bid</ButtonText>
+            </Button>
+            
+            {/* Chat with Seller Button */}
+            <Button
+              variant="outline"
+              style={styles.chatWithSellerButton}
+              onPress={handleChatWithSeller}
+            >
+              <HStack space="sm">
+                <MessageCircle size={20} color="#3B82F6" />
+                <ButtonText>Chat with Seller</ButtonText>
+              </HStack>
+            </Button>
+          </View>
         ) : hasUserBid ? (
           <Card className="p-4 rounded-xl mb-4 bg-indigo-50 border border-indigo-200">
             <HStack className="items-center justify-between">
               <Text className="text-base font-semibold text-indigo-900">
-                You've placed a bid on this item
+                You&apos;ve placed a bid on this item
               </Text>
             </HStack>
             
@@ -448,16 +532,30 @@ export default function BidDetailsScreen() {
                     </Box>
                   </HStack>
                   
-                  {userOffer.status === 'pending' && !timeLeftInfo.expired && (
+                  <HStack className="mt-4 space-x-2">
+                    {userOffer.status === 'pending' && !timeLeftInfo.expired && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-indigo-400"
+                        onPress={() => setBidModalVisible(true)}
+                      >
+                        <ButtonText className="text-indigo-700">Update Bid</ButtonText>
+                      </Button>
+                    )}
+                    
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-4 border-indigo-400"
-                      onPress={() => setBidModalVisible(true)}
+                      className="border-indigo-400"
+                      onPress={handleChatWithSeller}
                     >
-                      <ButtonText className="text-indigo-700">Update Bid</ButtonText>
+                      <HStack space="sm">
+                        <MessageCircle size={16} color="#4F46E5" />
+                        <ButtonText className="text-indigo-700">Chat with Seller</ButtonText>
+                      </HStack>
                     </Button>
-                  )}
+                  </HStack>
                 </View>
               ))}
           </Card>
@@ -918,5 +1016,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-  }
+  },
+  
+  // Chat button styles
+  chatWithSellerButton: {
+    marginTop: 12,
+    backgroundColor: 'transparent',
+    borderColor: '#3B82F6',
+    borderWidth: 1,
+  },
 });
