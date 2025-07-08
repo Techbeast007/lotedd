@@ -43,6 +43,11 @@ export interface Product {
   duplicated?: boolean;
   originalDocId?: string;
   copyIndex?: number;
+  
+  // New fields for seller product management
+  manufacturingCost?: number; // Cost per piece to manufacture
+  sellingPricePerPiece?: number; // Selling price per piece
+  wholeStockPrice?: number; // Optional price for the entire stock
 }
 
 /**
@@ -169,17 +174,127 @@ export const getProductsByCategory = async (category: string): Promise<Product[]
 };
 
 /**
- * Gets products by owner ID
+ * Gets products by owner ID or seller ID
+ * Handles cases where sellerId might be the userId or a stringified object containing uid
  */
 export const getProductsByOwnerId = async (ownerId: string): Promise<Product[]> => {
   try {
+    console.log(`Fetching products for owner/seller ID: ${ownerId}`);
+    
     const productsCollection = collection(firestore, 'products');
-    const q = query(productsCollection, where('ownerId', '==', ownerId));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ 
-      id: doc.id, 
-      ...doc.data() 
-    })) as Product[];
+    let allProducts: Product[] = [];
+    
+    // First, try with ownerId
+    const ownerQuery = query(productsCollection, where('ownerId', '==', ownerId));
+    const ownerSnapshot = await getDocs(ownerQuery);
+    
+    if (!ownerSnapshot.empty) {
+      console.log(`Found ${ownerSnapshot.docs.length} products with matching ownerId`);
+      const ownerProducts = ownerSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      })) as Product[];
+      allProducts = [...ownerProducts];
+    }
+    
+    // Then try with sellerId as direct match
+    const sellerQuery = query(productsCollection, where('sellerId', '==', ownerId));
+    const sellerSnapshot = await getDocs(sellerQuery);
+    
+    if (!sellerSnapshot.empty) {
+      console.log(`Found ${sellerSnapshot.docs.length} products with matching sellerId`);
+      const sellerProducts = sellerSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      })) as Product[];
+      
+      // Add any products not already in the list
+      sellerProducts.forEach(product => {
+        if (!allProducts.some(p => p.id === product.id)) {
+          allProducts.push(product);
+        }
+      });
+    }
+    
+    // Always check for products with serialized seller objects, regardless of previous results
+    console.log('Checking for products with serialized seller objects...');
+    
+    // Get all products and filter manually - we need to check all products for JSON string sellerId
+    const allProductsQuery = query(productsCollection);
+    const allProductsSnapshot = await getDocs(allProductsQuery);
+    
+    console.log(`Total number of products in database: ${allProductsSnapshot.docs.length}`);
+    
+    // Check each product individually and log detailed debug info
+    const filteredProducts: Product[] = [];
+    
+    for (const doc of allProductsSnapshot.docs) {
+      const data = doc.data();
+      const productId = doc.id;
+      
+      // Skip products we already found by direct id match
+      if (allProducts.some(p => p.id === productId)) {
+        continue;
+      }
+      
+      // If sellerId exists and is a string
+      if (typeof data.sellerId === 'string') {
+        const sellerIdStr = data.sellerId;
+        
+        // Log for debugging
+        if (sellerIdStr.includes(ownerId)) {
+          console.log(`Product ${productId} has sellerId containing the target ID: ${sellerIdStr.substring(0, 50)}...`);
+        }
+        
+        // Check if it's a JSON string
+        if (sellerIdStr.startsWith('{') || sellerIdStr.includes('"uid"') || sellerIdStr.includes("'uid'")) {
+          try {
+            // Try parsing as JSON
+            const sellerObj = JSON.parse(sellerIdStr);
+            
+            // Compare the uid field
+            if (sellerObj.uid === ownerId) {
+              console.log(`Found product ${productId} with matching JSON sellerId.uid`);
+              filteredProducts.push({
+                id: productId,
+                ...data
+              } as Product);
+            }
+          } catch {
+            // Not valid JSON, but still check if it contains the ID
+            if (sellerIdStr.includes(ownerId)) {
+              console.log(`Product ${productId} contains the owner ID, but is not valid JSON: ${sellerIdStr.substring(0, 20)}...`);
+              filteredProducts.push({
+                id: productId,
+                ...data
+              } as Product);
+            }
+          }
+        }
+        // If it's not JSON-like but contains the ID exactly
+        else if (sellerIdStr === ownerId) {
+          console.log(`Product ${productId} has exact sellerId match`);
+          filteredProducts.push({
+            id: productId,
+            ...data
+          } as Product);
+        }
+      }
+    }
+      
+      if (filteredProducts.length > 0) {
+        console.log(`Found ${filteredProducts.length} products with serialized seller objects`);
+        
+        // Add any products not already in the list
+        filteredProducts.forEach(product => {
+          if (!allProducts.some(p => p.id === product.id)) {
+            allProducts.push(product);
+          }
+        });
+      }
+    
+    console.log(`Total unique products found: ${allProducts.length}`);
+    return allProducts;
   } catch (error) {
     console.error(`Error fetching products by owner ${ownerId}:`, error);
     return [];
@@ -501,6 +616,54 @@ export const getRelatedProducts = async (category: string, currentProductId: str
     }
   } catch (error) {
     console.error('Error in getRelatedProducts:', error);
+    return [];
+  }
+};
+
+/**
+ * Gets products with low stock (below the specified threshold)
+ * @param threshold - The stock threshold (default: 200)
+ * @param sellerId - Optional seller ID to filter by
+ * @returns Promise with an array of low stock products
+ */
+export const getLowStockProducts = async (threshold = 200, sellerId?: string): Promise<Product[]> => {
+  try {
+    console.log(`Fetching products with stock below ${threshold}`);
+    const productsCollection = collection(firestore, 'products');
+    
+    // Start with getting all products
+    let querySnapshot;
+    
+    if (sellerId) {
+      // If seller ID is provided, filter by seller ID
+      const q = query(productsCollection, where('sellerId', '==', sellerId));
+      querySnapshot = await getDocs(q);
+      
+      // If no results, try with ownerId
+      if (querySnapshot.empty) {
+        const ownerQuery = query(productsCollection, where('ownerId', '==', sellerId));
+        querySnapshot = await getDocs(ownerQuery);
+      }
+    } else {
+      // Otherwise get all products
+      querySnapshot = await getDocs(productsCollection);
+    }
+    
+    // Filter products with stock below threshold
+    const products = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as Product[];
+    
+    const lowStockProducts = products.filter(product => 
+      product.stockQuantity !== undefined && 
+      product.stockQuantity < threshold
+    );
+    
+    console.log(`Found ${lowStockProducts.length} products with low stock`);
+    return lowStockProducts;
+  } catch (error) {
+    console.error('Error fetching low stock products:', error);
     return [];
   }
 };

@@ -12,6 +12,7 @@ import { Image } from '@/components/ui/image';
 import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
+import { getCurrentUser } from '@/services/authService';
 import { useCart } from '@/services/context/CartContext';
 import { Product, getProducts } from '@/services/productService';
 import { addToWishlist, getWishlistStatus, removeFromWishlist } from '@/services/wishlistService';
@@ -336,17 +337,27 @@ export default function ShopScreen() {
     try {
       setLoadingWishlist(true);
       
-      // Get current user ID (replace with actual auth logic)
-      const userId = 'current-user-id'; // Replace with actual auth user ID
+      // Get current user ID from auth service
+      const currentUser = getCurrentUser();
+      
+      if (!currentUser) {
+        // If no user is logged in, return early
+        setLoadingWishlist(false);
+        return;
+      }
+      
+      const userId = currentUser.uid;
       
       // In a real app, you would iterate through products and check their wishlist status
       // This is a simplified example - in production code you would use a batch operation
       const wishlistProducts: string[] = [];
       
       for (const product of products) {
-        const isInWishlist = await getWishlistStatus(userId, product.id);
-        if (isInWishlist) {
-          wishlistProducts.push(product.id);
+        if (product.id) { // Add null check for product.id
+          const isInWishlist = await getWishlistStatus(userId, product.id);
+          if (isInWishlist) {
+            wishlistProducts.push(product.id);
+          }
         }
       }
       
@@ -407,8 +418,16 @@ export default function ShopScreen() {
   // Toggle favorite products
   const handleToggleFavorite = useCallback(async (product) => {
     try {
-      // Get current user ID (replace with actual auth logic)
-      const userId = 'current-user-id'; // Replace with actual auth user ID
+      // Get current user ID from auth service
+      const currentUser = getCurrentUser();
+      
+      if (!currentUser) {
+        // Redirect to login if not logged in
+        router.push('/(auth)');
+        return;
+      }
+      
+      const userId = currentUser.uid;
       
       if (favorites.includes(product.id)) {
         // Remove from wishlist
@@ -432,8 +451,8 @@ export default function ShopScreen() {
           name: product.name,
           basePrice: product.basePrice,
           discountPrice: product.discountPrice,
-          featuredImage: product.featuredImage,
-          brand: product.brand,
+          featuredImage: product.featuredImage || (product.images?.length > 0 ? product.images[0] : ''),
+          brand: product.brand || '',
           addedAt: new Date()
         });
         setFavorites(prev => [...prev, product.id]);

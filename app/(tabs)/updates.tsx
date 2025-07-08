@@ -7,39 +7,46 @@ import { Image } from '@/components/ui/image';
 import { ScrollView } from '@/components/ui/scroll-view';
 import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
+import { getCurrentUser } from '@/services/authService';
+import { getLowStockProducts, Product } from '@/services/productService';
 import { useRouter } from 'expo-router';
 import { AlertTriangle, ArrowRight, Bell, Package, ShoppingBag } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, RefreshControl, StatusBar, StyleSheet } from 'react-native';
 
 export default function SellerUpdatesScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const STOCK_THRESHOLD = 200;
+  const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1542838132-92c53300491e?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80';
 
-  // Sample product data that needs restocking
-  const lowStockProducts = [
-    {
-      id: 1,
-      name: 'Organic Tomatoes',
-      currentStock: 5,
-      minStockLevel: 10,
-      image: 'https://images.unsplash.com/photo-1561136594-7f68413baa99?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80'
-    },
-    {
-      id: 2,
-      name: 'Fresh Spinach',
-      currentStock: 3,
-      minStockLevel: 15,
-      image: 'https://images.unsplash.com/photo-1576045057995-568f588f82fb?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80'
-    },
-    {
-      id: 3,
-      name: 'Red Apples',
-      currentStock: 8,
-      minStockLevel: 20,
-      image: 'https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80'
+  // Fetch low stock products based on current user
+  useEffect(() => {
+    fetchLowStockProducts();
+  }, []);
+
+  const fetchLowStockProducts = async () => {
+    try {
+      setLoading(true);
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        console.log('Fetching low stock products for user:', currentUser.uid);
+        const products = await getLowStockProducts(STOCK_THRESHOLD, currentUser.uid);
+        setLowStockProducts(products);
+        console.log(`Found ${products.length} low stock products`);
+      } else {
+        console.warn('No authenticated user found');
+        setLowStockProducts([]);
+      }
+    } catch (error) {
+      console.error('Error fetching low stock products:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   // Sample new order data
   const newOrders = [
@@ -89,10 +96,11 @@ export default function SellerUpdatesScreen() {
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    // Simulate refreshing data
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
+    // Refresh data from Firestore
+    fetchLowStockProducts()
+      .finally(() => {
+        setRefreshing(false);
+      });
   }, []);
 
   return (
@@ -103,9 +111,11 @@ export default function SellerUpdatesScreen() {
           <Text style={styles.headerTitle}>Updates & Notifications</Text>
           <Box style={styles.iconContainer}>
             <Bell size={20} color="#3B82F6" />
-            <Box style={styles.notificationBadge}>
-              <Text style={styles.badgeText}>{lowStockProducts.length + newOrders.filter(o => o.status === 'New').length}</Text>
-            </Box>
+            {lowStockProducts.length > 0 && (
+              <Box style={styles.notificationBadge}>
+                <Text style={styles.badgeText}>{lowStockProducts.length}</Text>
+              </Box>
+            )}
           </Box>
         </HStack>
       </Box>
@@ -130,40 +140,52 @@ export default function SellerUpdatesScreen() {
           </HStack>
 
           <Card style={styles.cardModern}>
-            {lowStockProducts.map((product, index) => (
-              <React.Fragment key={product.id}>
-                <HStack style={styles.productItemModern}>
-                  <Image
-                    source={{ uri: product.image }}
-                    style={styles.productImageModern}
-                    alt={product.name}
-                  />
-                  <VStack style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.stockInfo}>
-                      Current Stock: <Text style={styles.lowStockText}>{product.currentStock}</Text> / Min: {product.minStockLevel}
-                    </Text>
-                  </VStack>
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    style={styles.actionButtonModern}
-                    onPress={() => router.push('/editProduct')}
-                  >
-                    <ButtonText style={styles.actionButtonText}>Restock</ButtonText>
-                  </Button>
-                </HStack>
-                {index < lowStockProducts.length - 1 && <Divider style={styles.dividerModern} />}
-              </React.Fragment>
-            ))}
+            {loading ? (
+              <Box style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>Loading inventory data...</Text>
+              </Box>
+            ) : lowStockProducts.length > 0 ? (
+              lowStockProducts.map((product, index) => (
+                <React.Fragment key={product.id}>
+                  <HStack style={styles.productItemModern}>
+                    <Image
+                      source={{ uri: product.imageUrl || product.featuredImage || DEFAULT_IMAGE }}
+                      style={styles.productImageModern}
+                      alt={product.name}
+                    />
+                    <VStack style={styles.productInfo}>
+                      <Text style={styles.productName}>{product.name}</Text>
+                      <Text style={styles.stockInfo}>
+                        Current Stock: <Text style={styles.lowStockText}>{product.stockQuantity}</Text> / Min: {STOCK_THRESHOLD}
+                      </Text>
+                    </VStack>
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      style={styles.actionButtonModern}
+                      onPress={() => router.push({pathname: '/editProduct', params: { id: product.id }})}
+                    >
+                      <ButtonText style={styles.actionButtonText}>Restock</ButtonText>
+                    </Button>
+                  </HStack>
+                  {index < lowStockProducts.length - 1 && <Divider style={styles.dividerModern} />}
+                </React.Fragment>
+              ))
+            ) : (
+              <Box style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>
+                  No low stock items found.
+                </Text>
+              </Box>
+            )}
 
             <Button 
-              variant="ghost" 
+              variant="outline" 
               style={styles.viewAllButtonModern}
               onPress={() => router.push('/editProduct')}
             >
               <HStack style={styles.viewAllButtonContent}>
-                <ButtonText style={styles.viewAllButtonText}>View All Inventory</ButtonText>
+                <ButtonText style={styles.viewAllButtonText} onPress={() => router.push('/(tabs)/explore')}>View All Inventory</ButtonText>
                 <ArrowRight size={16} color="#3B82F6" />
               </HStack>
             </Button>
@@ -236,7 +258,7 @@ export default function SellerUpdatesScreen() {
             ))}
 
             <Button 
-              variant="ghost" 
+              variant="outline" 
               style={styles.viewAllButtonModern}
               onPress={() => console.log('View all orders')}
             >
@@ -328,7 +350,7 @@ export default function SellerUpdatesScreen() {
             ))}
 
             <Button 
-              variant="ghost" 
+              variant="outline" 
               style={styles.viewAllButtonModern}
               onPress={() => console.log('View all deliveries')}
             >
@@ -345,6 +367,30 @@ export default function SellerUpdatesScreen() {
 }
 
 const styles = StyleSheet.create({
+  actionButtonText: {
+    color: '#F59E0B',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  orderActionButtonText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  deliveryActionButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  iconBackgroundOrders: {
+    backgroundColor: '#D1FAE5',
+    padding: 8,
+    borderRadius: 10,
+  },
+  iconBackgroundDelivery: {
+    backgroundColor: '#E0E7FF',
+    padding: 8,
+    borderRadius: 10,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB',
@@ -683,5 +729,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 2,
     elevation: 2,
+  },
+  loadingContainer: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: '#6B7280',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  emptyContainer: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: '#6B7280',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 10,
   },
 });

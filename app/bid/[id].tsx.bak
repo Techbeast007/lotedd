@@ -168,24 +168,6 @@ export default function BidDetailsScreen() {
       return;
     }
     
-    // Validate against available stock
-    const availableStock = bid.productDetails?.stockQuantity || 0;
-    if (bidQuantityNum > availableStock) {
-      toast.show({
-        render: () => (
-          <Toast action="error" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Quantity Too High</ToastTitle>
-              <ToastDescription>
-                Cannot bid for more than the available stock ({availableStock} units)
-              </ToastDescription>
-            </VStack>
-          </Toast>
-        )
-      });
-      return;
-    }
-    
     try {
       setIsSubmitting(true);
       
@@ -348,7 +330,7 @@ export default function BidDetailsScreen() {
       return { expired: true, text: 'Expired' };
     }
   };
-  
+  };
   
   // Loading state
   if (isLoading) {
@@ -427,8 +409,8 @@ export default function BidDetailsScreen() {
     );
   }
   
-  // Time left calculation with null check
-  const timeLeftInfo = bid ? getTimeLeft(bid.bidEndTime) : { expired: true, text: 'Expired' };
+  // Time left calculation
+  const timeLeftInfo = bid && getTimeLeft(bid.bidEndTime);
   
   return (
     <View style={[
@@ -458,10 +440,10 @@ export default function BidDetailsScreen() {
         <Card className="p-4 rounded-xl mb-4">
           <HStack className="items-center mb-4">
             <Box className="w-[80px] h-[80px] bg-slate-100 rounded-lg overflow-hidden mr-3">
-              {bid?.productDetails?.featuredImage ? (
+              {bid.productDetails?.featuredImage ? (
                 <Image
                   source={{ uri: bid.productDetails.featuredImage }}
-                  alt={bid.productDetails?.name || "Product"}
+                  alt={bid.productDetails.name || "Product"}
                   className="w-full h-full"
                   resizeMode="cover"
                 />
@@ -474,11 +456,11 @@ export default function BidDetailsScreen() {
             
             <VStack className="flex-1">
               <Text className="text-sm text-slate-500 font-medium">
-                {bid?.productDetails?.brand || 'No Brand'}
+                {bid.productDetails?.brand || 'No Brand'}
               </Text>
               
               <Heading size="md" className="mb-1">
-                {bid?.productDetails?.name || 'Product'}
+                {bid.productDetails?.name || 'Product'}
               </Heading>
               
               <HStack className="items-center">
@@ -505,17 +487,17 @@ export default function BidDetailsScreen() {
           <View style={styles.detailsGrid}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Base Price</Text>
-              <Text style={styles.detailValue}>₹{bid?.basePrice || 0}</Text>
+              <Text style={styles.detailValue}>₹{bid.basePrice}</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Minimum Order</Text>
-              <Text style={styles.detailValue}>{bid?.moq || 0} units</Text>
+              <Text style={styles.detailValue}>{bid.moq} units</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>End Date</Text>
-              <Text style={styles.detailValue}>{bid && bid.bidEndTime ? formatDate(bid.bidEndTime) : 'N/A'}</Text>
+              <Text style={styles.detailValue}>{formatDate(bid.bidEndTime)}</Text>
             </View>
             
             <View style={styles.detailItem}>
@@ -548,7 +530,7 @@ export default function BidDetailsScreen() {
             </View>
           </View>
           
-          {bid?.description && (
+          {bid.description && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.descriptionLabel}>Description</Text>
               <Text style={styles.descriptionText}>{bid.description}</Text>

@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "TypeScript Check",
+			"command": "cd /Users/xmonks/lotedd && npm run tsc",
+			"group": "test",
+			"problemMatcher": [
+				"$tsc"
+			],
+			"args": []
+		}
+	]
+}

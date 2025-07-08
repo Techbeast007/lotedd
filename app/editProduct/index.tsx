@@ -6,16 +6,16 @@ import { HStack } from '@/components/ui/hstack';
 import { Input, InputField, InputSlot } from '@/components/ui/input';
 import { ScrollView } from '@/components/ui/scroll-view';
 import {
-    Select,
-    SelectBackdrop,
-    SelectContent,
-    SelectDragIndicator,
-    SelectDragIndicatorWrapper,
-    SelectIcon,
-    SelectInput,
-    SelectItem,
-    SelectPortal,
-    SelectTrigger,
+  Select,
+  SelectBackdrop,
+  SelectContent,
+  SelectDragIndicator,
+  SelectDragIndicatorWrapper,
+  SelectIcon,
+  SelectInput,
+  SelectItem,
+  SelectPortal,
+  SelectTrigger,
 } from "@/components/ui/select";
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
@@ -28,11 +28,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronDownIcon } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    TouchableOpacity
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableOpacity
 } from 'react-native';
 
 const EditProduct = () => {
@@ -65,6 +65,11 @@ const EditProduct = () => {
   const [skuId, setSkuId] = useState('');
   const [originalImages, setOriginalImages] = useState<string[]>([]);
   const [originalVideos, setOriginalVideos] = useState<string[]>([]);
+  
+  // New fields for seller product management
+  const [manufacturingCost, setManufacturingCost] = useState('');
+  const [sellingPricePerPiece, setSellingPricePerPiece] = useState('');
+  const [wholeStockPrice, setWholeStockPrice] = useState('');
 
   // Fetch product data when component mounts
   useEffect(() => {
@@ -98,6 +103,11 @@ const EditProduct = () => {
         setColor(data.color || '');
         setWeight(data.weight?.toString() || '');
         setDimensions(data.dimensions || '');
+        
+        // Load new seller-specific fields
+        setManufacturingCost(data.manufacturingCost?.toString() || '');
+        setSellingPricePerPiece(data.sellingPricePerPiece?.toString() || '');
+        setWholeStockPrice(data.wholeStockPrice?.toString() || '');
         setStatus(data.status || 'live');
         setSkuId(data.skuId || '');
         
@@ -283,6 +293,13 @@ const EditProduct = () => {
         })
       );
 
+      // Validate required fields for seller
+      if (!manufacturingCost || !sellingPricePerPiece || !stockQuantity) {
+        Alert.alert('Required Fields', 'Please enter manufacturing cost, selling price per piece, and stock quantity');
+        setIsLoading(false);
+        return;
+      }
+
       // Update the product in Firestore
       await firestore().collection('products').doc(String(id)).update({
         name: productName,
@@ -303,6 +320,10 @@ const EditProduct = () => {
         color: color || '',
         weight: parseFloat(weight) || 0,
         dimensions: dimensions || '',
+        // New seller-specific fields
+        manufacturingCost: parseFloat(manufacturingCost) || 0,
+        sellingPricePerPiece: parseFloat(sellingPricePerPiece) || 0,
+        wholeStockPrice: parseFloat(wholeStockPrice) || 0,
         updatedAt: firestore.FieldValue.serverTimestamp(),
       });
 
@@ -551,7 +572,32 @@ const EditProduct = () => {
               <Box className="mb-7 space-y-8">
                 <Text className="text-xl font-bold mb-4">Pricing & Availability</Text>
                 <VStack className="space-y-4">
-                  <Input className="mb-4">
+                  <Text className="text-md font-medium text-slate-700 mt-2">Manufacturing Cost (per piece)*</Text>
+                  <Input className="mb-2">
+                    <InputSlot className="pl-3">
+                      <InputField
+                        placeholder="Enter manufacturing cost per piece"
+                        value={manufacturingCost}
+                        onChangeText={setManufacturingCost}
+                        keyboardType="numeric"
+                      />
+                    </InputSlot>
+                  </Input>
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Selling Price (per piece)*</Text>
+                  <Input className="mb-2">
+                    <InputSlot className="pl-3">
+                      <InputField
+                        placeholder="Enter selling price per piece"
+                        value={sellingPricePerPiece}
+                        onChangeText={setSellingPricePerPiece}
+                        keyboardType="numeric"
+                      />
+                    </InputSlot>
+                  </Input>
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Base Price</Text>
+                  <Input className="mb-2">
                     <InputSlot className="pl-3">
                       <InputField
                         placeholder="Enter base price"
@@ -561,7 +607,9 @@ const EditProduct = () => {
                       />
                     </InputSlot>
                   </Input>
-                  <Input className="mb-4">
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Discount Price (if any)</Text>
+                  <Input className="mb-2">
                     <InputSlot className="pl-3">
                       <InputField
                         placeholder="Enter discount price (if any)"
@@ -571,7 +619,21 @@ const EditProduct = () => {
                       />
                     </InputSlot>
                   </Input>
-                  <Input className="mb-4">
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Whole Stock Price (optional)</Text>
+                  <Input className="mb-2">
+                    <InputSlot className="pl-3">
+                      <InputField
+                        placeholder="Enter price for the entire stock (optional)"
+                        value={wholeStockPrice}
+                        onChangeText={setWholeStockPrice}
+                        keyboardType="numeric"
+                      />
+                    </InputSlot>
+                  </Input>
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Stock Quantity*</Text>
+                  <Input className="mb-2">
                     <InputSlot className="pl-3">
                       <InputField
                         placeholder="Enter stock quantity"

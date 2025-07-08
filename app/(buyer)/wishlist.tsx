@@ -89,31 +89,54 @@ export default function WishlistScreen() {
     }
   };
 
-  const handleAddToCart = (item: WishlistItem) => {
-    // Create a product object that matches the Product interface
-    const product: Product = {
-      id: item.productId,
-      name: item.name,
-      basePrice: item.basePrice,
-      discountPrice: item.discountPrice,
-      description: '',  // Required field in Product interface
-      stockQuantity: 1, // Required field in Product interface
-      featuredImage: item.featuredImage,
-      images: item.featuredImage ? [item.featuredImage] : []
-    };
+  const handleAddToCart = async (item: WishlistItem) => {
+    if (!currentUser) return;
     
-    addItem(product, 1);
-    
-    toast.show({
-      render: () => (
-        <Toast action="success" variant="solid">
-          <VStack space="xs">
-            <ToastTitle>Added to Cart</ToastTitle>
-            <ToastDescription>Product added to your cart</ToastDescription>
-          </VStack>
-        </Toast>
-      )
-    });
+    try {
+      // Create a product object that matches the Product interface
+      const product: Product = {
+        id: item.productId,
+        name: item.name,
+        basePrice: item.basePrice,
+        discountPrice: item.discountPrice,
+        description: '',  // Required field in Product interface
+        stockQuantity: 1, // Required field in Product interface
+        featuredImage: item.featuredImage,
+        images: item.featuredImage ? [item.featuredImage] : []
+      };
+      
+      // Add to cart
+      await addItem(product, 1);
+      
+      // Remove from wishlist
+      await removeFromWishlist(currentUser.uid, item.productId);
+      
+      // Update UI by removing item from state
+      setWishlistItems(prev => prev.filter(wishlistItem => wishlistItem.productId !== item.productId));
+      
+      toast.show({
+        render: () => (
+          <Toast action="success" variant="solid">
+            <VStack space="xs">
+              <ToastTitle>Added to Cart</ToastTitle>
+              <ToastDescription>Product moved from wishlist to cart</ToastDescription>
+            </VStack>
+          </Toast>
+        )
+      });
+    } catch (error) {
+      console.error('Error handling cart operation:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <VStack space="xs">
+              <ToastTitle>Error</ToastTitle>
+              <ToastDescription>Failed to add item to cart</ToastDescription>
+            </VStack>
+          </Toast>
+        )
+      });
+    }
   };
 
   const handleRefresh = () => {
