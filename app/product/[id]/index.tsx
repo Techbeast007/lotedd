@@ -359,7 +359,7 @@ export default function ProductDetailScreen() {
   };
   
   // Handle adding to cart
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!product) return;
     
     try {
@@ -377,18 +377,36 @@ export default function ProductDetailScreen() {
         images: product.images
       };
       
-      addItem(productForCart);
+      // Add item to cart
+      await addItem(productForCart);
       
-      toast.show({
-        render: () => (
-          <Toast action="success" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Added to Cart</ToastTitle>
-              <ToastDescription>Product added to your cart</ToastDescription>
-            </VStack>
-          </Toast>
-        )
-      });
+      // If the product is in the wishlist, remove it
+      if (isInWishlist && currentUser && product.id) {
+        await removeFromWishlist(currentUser.uid, product.id);
+        setIsInWishlist(false);
+        
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Added to Cart</ToastTitle>
+                <ToastDescription>Product moved from wishlist to cart</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
+      } else {
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Added to Cart</ToastTitle>
+                <ToastDescription>Product added to your cart</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
+      }
     } catch (err) {
       console.error('Error adding to cart:', err);
       

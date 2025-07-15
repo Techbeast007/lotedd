@@ -120,29 +120,33 @@ export const getBidById = async (bidId: string) => {
     console.log('Fetching bid with ID:', bidId);
     const bidSnapshot = await firestore().collection('bids').doc(bidId).get();
     
-    if (!bidSnapshot.exists) {
+    if (!bidSnapshot.exists()) {
       throw new Error('Bid not found');
     }
     
     const bidData = { id: bidSnapshot.id, ...bidSnapshot.data() } as Bid;
-    console.log('Bid data retrieved:', bidData);
     
-    // Fetch the associated product details if productId exists
-    if (bidData.productId) {
-      console.log('Fetching product details for productId:', bidData.productId);
+    // If we have productId but productDetails is missing or has no stockQuantity,
+    // fetch the product details to ensure we have the latest stock information
+    if (bidData.productId && 
+        (!bidData.productDetails || bidData.productDetails.stockQuantity === undefined)) {
       try {
-        const productSnapshot = await firestore().collection('products').doc(bidData.productId).get();
-        if (productSnapshot.exists) {
-          const productData = { id: productSnapshot.id, ...productSnapshot.data() };
-          console.log('Product details retrieved:', productData);
-          // Attach the product details to the bid
-          bidData.productDetails = productData as Product;
-        } else {
-          console.warn('Product not found for ID:', bidData.productId);
+        console.log('Fetching product details for bid:', bidId);
+        const productSnapshot = await firestore()
+          .collection('products')
+          .doc(bidData.productId)
+          .get();
+          
+        if (productSnapshot.exists()) {
+          const productData = { 
+            id: productSnapshot.id, 
+            ...productSnapshot.data() 
+          };
+          bidData.productDetails = productData as any;
+          console.log('Updated product details with stock:', (productData as any).stockQuantity);
         }
-      } catch (productError) {
-        console.error('Error fetching product details:', productError);
-        // Continue without product details if there's an error
+      } catch (err) {
+        console.error('Failed to fetch product details for bid:', err);
       }
     }
     
@@ -204,6 +208,30 @@ export const submitBidOffer = async (bidOfferId: Omit<BidOffer, 'id' | 'createdA
       throw new Error('You must be logged in to submit a bid offer');
     }
 
+    // First, get the bid to check stock availability
+    const bidDoc = await firestore().collection('bids').doc(bidOfferId.bidId).get();
+    if (!bidDoc.exists()) {
+      throw new Error('Bid not found');
+    }
+
+    const bidData = bidDoc.data() as Bid;
+    
+    // If we have product details with stock info, validate quantity
+    if (bidData.productDetails && bidData.productDetails.stockQuantity !== undefined) {
+      if (bidOfferId.quantity > bidData.productDetails.stockQuantity) {
+        throw new Error(`Cannot bid for more than the available stock (${bidData.productDetails.stockQuantity} units)`);
+      }
+    } else {
+      // If bid doesn't have product details, fetch the product directly
+      const productDoc = await firestore().collection('products').doc(bidOfferId.productId).get();
+      if (productDoc.exists() && productDoc.data()?.stockQuantity !== undefined) {
+        const stockQuantity = productDoc.data()?.stockQuantity;
+        if (bidOfferId.quantity > stockQuantity) {
+          throw new Error(`Cannot bid for more than the available stock (${stockQuantity} units)`);
+        }
+      }
+    }
+
     const bidOfferWithTimestamps = {
       ...bidOfferId,
       buyerId: user.uid,
@@ -217,7 +245,7 @@ export const submitBidOffer = async (bidOfferId: Omit<BidOffer, 'id' | 'createdA
     // Update bid count
     const bidSnapshot = await firestore().collection('bids').doc(bidOfferId.bidId).get();
     
-    if (bidSnapshot.exists) {
+    if (bidSnapshot.exists()) {
       const bidData = bidSnapshot.data();
       const bidCount = bidData?.bidCount || 0;
       await firestore().collection('bids').doc(bidOfferId.bidId).update({ bidCount: bidCount + 1 });
@@ -353,7 +381,7 @@ export const listenToBid = (bidId: string, callback: (bid: Bid) => void) => {
   return firestore()
     .collection('bids')
     .doc(bidId)
-    .onSnapshot(async (snapshot) => {
+    .onSnapshot(async snapshot => {
       if (snapshot.exists) {
         const bidData = { id: snapshot.id, ...snapshot.data() } as Bid;
         
@@ -403,7 +431,7 @@ export const incrementProductViewCount = async (productId: string) => {
     const productDoc = firestore().collection('products').doc(productId);
     const productSnapshot = await productDoc.get();
     
-    if (productSnapshot.exists) {
+    if (productSnapshot.exists()) {
       const productData = productSnapshot.data();
       const viewCount = productData?.viewCount || 0;
       

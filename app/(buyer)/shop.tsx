@@ -336,17 +336,19 @@ export default function ShopScreen() {
   const loadWishlistData = async () => {
     try {
       setLoadingWishlist(true);
-      const currentUser = getCurrentUser();
-      if (!currentUser) {
-        setFavorites([]);
-        return;
-      }
-      const userId = currentUser.uid;
+      
+      // Get current user ID (replace with actual auth logic)
+      const userId = 'current-user-id'; // Replace with actual auth user ID
+      
+      // In a real app, you would iterate through products and check their wishlist status
+      // This is a simplified example - in production code you would use a batch operation
       const wishlistProducts: string[] = [];
       for (const product of products) {
-        const isInWishlist = await getWishlistStatus(userId, product.id);
-        if (isInWishlist) {
-          wishlistProducts.push(product.id);
+        if (product.id) { // Add null check for product.id
+          const isInWishlist = await getWishlistStatus(userId, product.id);
+          if (isInWishlist) {
+            wishlistProducts.push(product.id);
+          }
         }
       }
       setFavorites(wishlistProducts);
@@ -406,12 +408,17 @@ export default function ShopScreen() {
   // Toggle favorite products
   const handleToggleFavorite = useCallback(async (product) => {
     try {
+      // Get current user ID from auth service
       const currentUser = getCurrentUser();
+      
       if (!currentUser) {
+        // Redirect to login if not logged in
         router.push('/(auth)');
         return;
       }
+      
       const userId = currentUser.uid;
+      
       if (favorites.includes(product.id)) {
         // Remove from wishlist
         await removeFromWishlist(userId, product.id);
@@ -433,8 +440,8 @@ export default function ShopScreen() {
           name: product.name,
           basePrice: product.basePrice,
           discountPrice: product.discountPrice,
-          featuredImage: product.featuredImage,
-          brand: product.brand,
+          featuredImage: product.featuredImage || (product.images?.length > 0 ? product.images[0] : ''),
+          brand: product.brand || '',
           addedAt: new Date()
         });
         setFavorites(prev => [...prev, product.id]);

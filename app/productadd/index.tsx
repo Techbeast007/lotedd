@@ -59,6 +59,11 @@ const ProductAdd = () => {
     const [color, setColor] = useState(''); // New state for color
     const [status, setStatus] = useState('live'); // New state for status
     const [featuredImage, setFeaturedImage] = useState<string | null>(null);
+    
+    // New state for seller product management
+    const [manufacturingCost, setManufacturingCost] = useState('');
+    const [sellingPricePerPiece, setSellingPricePerPiece] = useState('');
+    const [wholeStockPrice, setWholeStockPrice] = useState('');
 
 
     const handleSelectFeaturedImage = async () => {
@@ -135,6 +140,9 @@ const ProductAdd = () => {
         setColor('');
         setWeight('');
         setDimensions('');
+        setManufacturingCost('');
+        setSellingPricePerPiece('');
+        setWholeStockPrice('');
       };
   
       const handleAddProduct = async () => {
@@ -159,6 +167,13 @@ const ProductAdd = () => {
             videos.map((uri) => uploadFileToStorage(uri, 'videos'))
           );
       
+          // Validate required fields for seller
+          if (!manufacturingCost || !sellingPricePerPiece || !stockQuantity) {
+            alert('Please enter manufacturing cost, selling price per piece, and stock quantity');
+            setIsLoading(false);
+            return;
+          }
+
           // Save product to Firestore
           await firestore().collection('products').add({
             name: productName,
@@ -181,6 +196,10 @@ const ProductAdd = () => {
             color: color || '',
             weight: parseFloat(weight) || 0,
             dimensions: dimensions || '',
+            // New fields for seller product management
+            manufacturingCost: parseFloat(manufacturingCost) || 0,
+            sellingPricePerPiece: parseFloat(sellingPricePerPiece) || 0,
+            wholeStockPrice: parseFloat(wholeStockPrice) || 0,
             createdAt: firestore.FieldValue.serverTimestamp(),
           });
       
@@ -405,31 +424,75 @@ const handleSelectImages = async () => {
           <Box className="mb-7 space-y-8">
             <Text className="text-xl font-bold mb-4">Pricing & Availability</Text>
             <VStack className="space-y-4">
-              <Input className="mb-4">
+              <Text className="text-md font-medium text-slate-700 mt-2">Manufacturing Cost (per piece)*</Text>
+              <Input className="mb-2">
                 <InputSlot className="pl-3">
-            <InputField
-              placeholder="Enter base price"
-              value={basePrice}
-              onChangeText={setBasePrice}
-            />
+                  <InputField
+                    placeholder="Enter manufacturing cost per piece"
+                    value={manufacturingCost}
+                    onChangeText={setManufacturingCost}
+                    keyboardType="numeric"
+                  />
                 </InputSlot>
               </Input>
-              <Input className="mb-4">
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Selling Price (per piece)*</Text>
+              <Input className="mb-2">
+                <InputSlot className="pl-3">
+                  <InputField
+                    placeholder="Enter selling price per piece"
+                    value={sellingPricePerPiece}
+                    onChangeText={setSellingPricePerPiece}
+                    keyboardType="numeric"
+                  />
+                </InputSlot>
+              </Input>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Base Price</Text>
+              <Input className="mb-2">
+                <InputSlot className="pl-3">
+                  <InputField
+                    placeholder="Enter base price"
+                    value={basePrice}
+                    onChangeText={setBasePrice}
+                    keyboardType="numeric"
+                  />
+                </InputSlot>
+              </Input>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Discount Price (if any)</Text>
+              <Input className="mb-2">
                 <InputSlot>
-            <InputField
-              placeholder="Enter discount price (if any)"
-              value={discountPrice}
-              onChangeText={setDiscountPrice}
-            />
+                  <InputField
+                    placeholder="Enter discount price (if any)"
+                    value={discountPrice}
+                    onChangeText={setDiscountPrice}
+                    keyboardType="numeric"
+                  />
                 </InputSlot>
               </Input>
-              <Input className="mb-4">
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Whole Stock Price (optional)</Text>
+              <Input className="mb-2">
                 <InputSlot className="pl-3">
-            <InputField
-              placeholder="Enter stock quantity"
-              value={stockQuantity}
-              onChangeText={setStockQuantity}
-            />
+                  <InputField
+                    placeholder="Enter price for the entire stock (optional)"
+                    value={wholeStockPrice}
+                    onChangeText={setWholeStockPrice}
+                    keyboardType="numeric"
+                  />
+                </InputSlot>
+              </Input>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Stock Quantity*</Text>
+              <Input className="mb-2">
+                <InputSlot className="pl-3">
+                  <InputField
+                    placeholder="Enter stock quantity"
+                    value={stockQuantity}
+                    onChangeText={setStockQuantity}
+                    keyboardType="numeric"
+                  />
                 </InputSlot>
               </Input>
             </VStack>

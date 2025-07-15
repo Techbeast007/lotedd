@@ -2,12 +2,16 @@ import { Box } from '@/components/ui/box';
 import { HStack } from '@/components/ui/hstack';
 import { Image } from '@/components/ui/image';
 import { Text } from '@/components/ui/text';
+import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
+import { VStack } from '@/components/ui/vstack';
+import { getCurrentUser } from '@/services/authService';
 import { useCart } from '@/services/context/CartContext';
 import { Product } from '@/services/productService';
+import { addToWishlist, getWishlistStatus, removeFromWishlist } from '@/services/wishlistService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Eye, Heart, MessageCircle, ShoppingCart, Star } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -20,35 +24,38 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false }) => {
   const router = useRouter();
-  const { addToCart } = useCart();
+  const toast = useToast();
+  const { addItem } = useCart();
   const [isFavorite, setIsFavorite] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
   const [addingToCart, setAddingToCart] = useState(false);
+  const [isWishlistLoading, setIsWishlistLoading] = useState(false);
+  const currentUser = getCurrentUser();
   
-  // Enhanced debugging: Log complete product details to identify issues
-  useEffect(() => {console.log(product)
-    console.log(`Product ${product.id} - Complete data:`, JSON.stringify(product, null, 2));
-    console.log(`Product ${product.id} - featuredImage:`, product.featuredImage);
-    console.log(`Product ${product.id} - images:`, product.images);
-  }, [product]);
+  // Check if product is in wishlist when component mounts
+  const checkWishlistStatus = useCallback(async () => {
+    if (!currentUser || !product?.id) return;
+    
+    try {
+      setIsWishlistLoading(true);
+      const status = await getWishlistStatus(currentUser.uid, product.id);
+      setIsFavorite(status);
+    } catch (err) {
+      console.error('Error checking wishlist status:', err);
+    } finally {
+      setIsWishlistLoading(false);
+    }
+  }, [currentUser, product?.id]);
+
+  useEffect(() => {
+    checkWishlistStatus();
+  }, [checkWishlistStatus]);
   
   // Determine the best image to use with better fallback
   const imageUrl = product.featuredImage ? product.featuredImage : 
                   (product.images && product.images.length > 0 ? product.images[0] : 
                   'https://via.placeholder.com/150?text=Product');
-  
-  // More detailed logging for image URL
-  useEffect(() => {
-    console.log(`Product ${product.id} - Using image URL:`, imageUrl);
-    if (imageUrl === product.featuredImage) {
-      console.log(`Product ${product.id} - Using featuredImage URL`);
-    } else if (product.images && product.images.length > 0) {
-      console.log(`Product ${product.id} - Using first image from images array`);
-    } else {
-      console.log(`Product ${product.id} - Using fallback placeholder`);
-    }
-  }, [imageUrl, product]);
   
   const handleViewProduct = () => {
     router.push(`/product/${product.id}`);
@@ -64,16 +71,109 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false 
     });
   };
 
-  const toggleFavorite = () => {
-    setIsFavorite(!isFavorite);
+  const toggleFavorite = async () => {
+    if (!currentUser) {
+      router.push('/(auth)');
+      return;
+    }
+    
+    // Make sure product ID exists
+    if (!product.id) {
+      console.error('Cannot toggle wishlist - missing product ID');
+      return;
+    }
+    
+    try {
+      setIsWishlistLoading(true);
+      
+      if (isFavorite) {
+        // Remove from wishlist
+        await removeFromWishlist(currentUser.uid, product.id);
+        setIsFavorite(false);
+        
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Removed from Wishlist</ToastTitle>
+                <ToastDescription>Product removed from your wishlist</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
+      } else {
+        // Add to wishlist with necessary type checks
+        const images = product.images || [];
+        const featuredImage = product.featuredImage || (images.length > 0 ? images[0] : '');
+        
+        await addToWishlist(currentUser.uid, {
+          productId: product.id,
+          name: product.name || 'Product',
+          basePrice: product.basePrice || 0,
+          discountPrice: product.discountPrice,
+          featuredImage: featuredImage,
+          brand: product.brand || '',
+          addedAt: new Date()
+        });
+        
+        setIsFavorite(true);
+        
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Added to Wishlist</ToastTitle>
+                <ToastDescription>Product saved to your wishlist</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist status:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <VStack space="xs">
+              <ToastTitle>Error</ToastTitle>
+              <ToastDescription>Failed to update wishlist</ToastDescription>
+            </VStack>
+          </Toast>
+        )
+      });
+    } finally {
+      setIsWishlistLoading(false);
+    }
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     setAddingToCart(true);
-    setTimeout(() => {
-      addToCart(product);
+    
+    try {
+      // Add product to cart
+      await addItem(product, 1);
+      
+      // If the product is in the wishlist, remove it
+      if (isFavorite && currentUser && product.id) {
+        await removeFromWishlist(currentUser.uid, product.id);
+        setIsFavorite(false);
+        
+        toast.show({
+          render: () => (
+            <Toast action="success" variant="solid">
+              <VStack space="xs">
+                <ToastTitle>Added to Cart</ToastTitle>
+                <ToastDescription>Product moved from wishlist to cart</ToastDescription>
+              </VStack>
+            </Toast>
+          )
+        });
+      }
+    } catch (error) {
+      console.error('Error handling cart operation:', error);
+    } finally {
       setAddingToCart(false);
-    }, 300);
+    }
   };
 
   const renderStars = (rating: number) => {
@@ -133,15 +233,19 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, hideActions = false 
             </View>
           )}
           
-          <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite}>
-            <Heart 
-              size={18} 
-              color={isFavorite ? "#EF4444" : "white"} 
-              fill={isFavorite ? "#EF4444" : "none"} 
-            />
+          <TouchableOpacity style={styles.favoriteButton} onPress={toggleFavorite} disabled={isWishlistLoading}>
+            {isWishlistLoading ? (
+              <ActivityIndicator size="small" color="#EF4444" />
+            ) : (
+              <Heart 
+                size={18} 
+                color={isFavorite ? "#EF4444" : "white"} 
+                fill={isFavorite ? "#EF4444" : "none"} 
+              />
+            )}
           </TouchableOpacity>
           
-          {product.discountPercentage > 0 && (
+          {product.discountPercentage && product.discountPercentage > 0 && (
             <LinearGradient
               colors={['#FF416C', '#FF4B2B']}
               start={{x: 0, y: 0}}

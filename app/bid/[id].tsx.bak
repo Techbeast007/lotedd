@@ -14,15 +14,15 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Activity, ArrowLeft, MessageCircle, Package, User } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -79,7 +79,7 @@ export default function BidDetailsScreen() {
         setBidOffers(offers);
       } catch (err) {
         console.error('Failed to fetch bid details:', err);
-        setError(`Could not load bid details: [${err}]`);
+        setError('Could not load bid details. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -168,24 +168,6 @@ export default function BidDetailsScreen() {
       return;
     }
     
-    // Validate against available stock
-    const availableStock = bid.productDetails?.stockQuantity || 0;
-    if (bidQuantityNum > availableStock) {
-      toast.show({
-        render: () => (
-          <Toast action="error" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Quantity Too High</ToastTitle>
-              <ToastDescription>
-                Cannot bid for more than the available stock ({availableStock} units)
-              </ToastDescription>
-            </VStack>
-          </Toast>
-        )
-      });
-      return;
-    }
-    
     try {
       setIsSubmitting(true);
       
@@ -231,40 +213,12 @@ export default function BidDetailsScreen() {
   
   // Start chat with seller function
   const handleChatWithSeller = async () => {
-    if (!currentUser) {
-      console.error('No current user found');
-      toast.show({
-        placement: "top",
-        render: () => (
-          <Toast action="error">
-            <ToastTitle>Error</ToastTitle>
-            <ToastDescription>You must be logged in to chat with the seller</ToastDescription>
-          </Toast>
-        )
-      });
-      return;
-    }
-
-    if (!bid) {
-      console.error('No bid data found');
-      toast.show({
-        placement: "top",
-        render: () => (
-          <Toast action="error">
-            <ToastTitle>Error</ToastTitle>
-            <ToastDescription>Could not load bid information</ToastDescription>
-          </Toast>
-        )
-      });
-      return;
-    }
+    if (!currentUser || !bid) return;
     
     try {
-      console.log('Attempting to chat with seller, bid data:', bid);
-      
-      // Check if seller ID is available and valid
-      if (!bid.sellerId || typeof bid.sellerId !== 'string' || bid.sellerId.trim() === '') {
-        console.error('Missing or invalid seller ID:', bid.sellerId);
+      // Ensure we have a valid seller ID
+      if (!bid.sellerId) {
+        console.error('Missing seller ID');
         toast.show({
           placement: "top",
           render: () => (
@@ -285,6 +239,7 @@ export default function BidDetailsScreen() {
         id: bid.sellerId,
         name: sellerName,
         type: ParticipantType.SELLER,
+        // Don't include avatar field at all if it's not present
       };
       
       // Create related object with no undefined values
@@ -293,8 +248,6 @@ export default function BidDetailsScreen() {
         id: bid.productId || '', // Empty string fallback
         name: bid.productDetails?.name || 'Product' // Empty string fallback
       };
-
-      console.log('Creating conversation with seller:', sellerParticipant.id);
       
       // Create or get existing conversation with proper validation
       const conversationId = await getOrCreateConversation(
@@ -304,11 +257,10 @@ export default function BidDetailsScreen() {
       
       // Navigate to chat
       if (conversationId) {
-        console.log('Successfully created conversation:', conversationId);
         // Use replace instead of push to prevent stack navigation issues
         router.replace(`/messages/${conversationId}`);
       } else {
-        throw new Error('Failed to create conversation: conversation ID is empty');
+        throw new Error('Failed to create conversation');
       }
       
     } catch (error) {
@@ -378,10 +330,6 @@ export default function BidDetailsScreen() {
       return { expired: true, text: 'Expired' };
     }
   };
-  
-  // Defensive rendering for bid details
-  const safeValue = (val: any, fallback = 'N/A') => {
-    return (val !== undefined && val !== null) ? val.toString() : fallback;
   };
   
   // Loading state
@@ -461,8 +409,8 @@ export default function BidDetailsScreen() {
     );
   }
   
-  // Time left calculation with null check
-  const timeLeftInfo = bid ? getTimeLeft(bid.bidEndTime) : { expired: true, text: 'Expired' };
+  // Time left calculation
+  const timeLeftInfo = bid && getTimeLeft(bid.bidEndTime);
   
   return (
     <View style={[
@@ -492,10 +440,10 @@ export default function BidDetailsScreen() {
         <Card className="p-4 rounded-xl mb-4">
           <HStack className="items-center mb-4">
             <Box className="w-[80px] h-[80px] bg-slate-100 rounded-lg overflow-hidden mr-3">
-              {bid?.productDetails?.featuredImage ? (
+              {bid.productDetails?.featuredImage ? (
                 <Image
                   source={{ uri: bid.productDetails.featuredImage }}
-                  alt={bid.productDetails?.name || "Product"}
+                  alt={bid.productDetails.name || "Product"}
                   className="w-full h-full"
                   resizeMode="cover"
                 />
@@ -508,11 +456,11 @@ export default function BidDetailsScreen() {
             
             <VStack className="flex-1">
               <Text className="text-sm text-slate-500 font-medium">
-                {bid?.productDetails?.brand || 'No Brand'}
+                {bid.productDetails?.brand || 'No Brand'}
               </Text>
               
               <Heading size="md" className="mb-1">
-                {bid?.productDetails?.name || 'Product'}
+                {bid.productDetails?.name || 'Product'}
               </Heading>
               
               <HStack className="items-center">
@@ -544,13 +492,12 @@ export default function BidDetailsScreen() {
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Minimum Order</Text>
-              <Text style={styles.detailValue}>{bid?.moq || 0} units</Text>
-              <Text style={styles.detailValue}>{safeValue(bid?.moq)} units</Text>
+              <Text style={styles.detailValue}>{bid.moq} units</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>End Date</Text>
-              <Text style={styles.detailValue}>{bid && bid.bidEndTime ? formatDate(bid?.bidEndTime) : 'N/A'}</Text>
+              <Text style={styles.detailValue}>{formatDate(bid.bidEndTime)}</Text>
             </View>
             
             <View style={styles.detailItem}>
@@ -583,7 +530,7 @@ export default function BidDetailsScreen() {
             </View>
           </View>
           
-          {bid?.description && (
+          {bid.description && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.descriptionLabel}>Description</Text>
               <Text style={styles.descriptionText}>{bid.description}</Text>
@@ -798,7 +745,7 @@ export default function BidDetailsScreen() {
               
               {offer.message && (
                 <View className="mt-3 p-3 bg-slate-50 rounded-lg">
-                  <Text className="text-sm text-slate600">{offer.message}</Text>
+                  <Text className="text-sm text-slate-600">{offer.message}</Text>
                 </View>
               )}
             </Card>
