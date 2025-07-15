@@ -89,7 +89,7 @@ export default function WishlistScreen() {
     }
   };
 
-  const handleAddToCart = (item: WishlistItem) => {
+  const handleAddToCart = async (item: WishlistItem) => {
     // Create a product object that matches the Product interface
     const product: Product = {
       id: item.productId,
@@ -102,7 +102,11 @@ export default function WishlistScreen() {
       images: item.featuredImage ? [item.featuredImage] : []
     };
     
-    addItem(product, 1);
+    await addItem(product, 1);
+    if (currentUser) {
+      await removeFromWishlist(currentUser.uid, item.productId);
+      setWishlistItems(prev => prev.filter(w => w.productId !== item.productId));
+    }
     
     toast.show({
       render: () => (

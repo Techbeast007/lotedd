@@ -87,7 +87,25 @@ export const getBids = async (filters?: { sellerId?: string; status?: BidStatus 
       ...doc.data(),
     })) as Bid[];
 
-    return bids;
+    // Fetch product details for each bid
+    const bidsWithProducts = await Promise.all(bids.map(async (bid) => {
+      if (bid.productId) {
+        try {
+          const productSnapshot = await firestore().collection('products').doc(bid.productId).get();
+          if (productSnapshot.exists) {
+            const productData = { id: productSnapshot.id, ...productSnapshot.data() };
+            // Attach the product details to the bid
+            bid.productDetails = productData as Product;
+          }
+        } catch (productError) {
+          console.error(`Error fetching product details for bid ${bid.id}:`, productError);
+          // Continue without product details if there's an error
+        }
+      }
+      return bid;
+    }));
+
+    return bidsWithProducts;
   } catch (error) {
     console.error('Error getting bids:', error);
     throw error;
@@ -99,13 +117,36 @@ export const getBids = async (filters?: { sellerId?: string; status?: BidStatus 
  */
 export const getBidById = async (bidId: string) => {
   try {
+    console.log('Fetching bid with ID:', bidId);
     const bidSnapshot = await firestore().collection('bids').doc(bidId).get();
     
     if (!bidSnapshot.exists) {
       throw new Error('Bid not found');
     }
     
-    return { id: bidSnapshot.id, ...bidSnapshot.data() } as Bid;
+    const bidData = { id: bidSnapshot.id, ...bidSnapshot.data() } as Bid;
+    console.log('Bid data retrieved:', bidData);
+    
+    // Fetch the associated product details if productId exists
+    if (bidData.productId) {
+      console.log('Fetching product details for productId:', bidData.productId);
+      try {
+        const productSnapshot = await firestore().collection('products').doc(bidData.productId).get();
+        if (productSnapshot.exists) {
+          const productData = { id: productSnapshot.id, ...productSnapshot.data() };
+          console.log('Product details retrieved:', productData);
+          // Attach the product details to the bid
+          bidData.productDetails = productData as Product;
+        } else {
+          console.warn('Product not found for ID:', bidData.productId);
+        }
+      } catch (productError) {
+        console.error('Error fetching product details:', productError);
+        // Continue without product details if there's an error
+      }
+    }
+    
+    return bidData;
   } catch (error) {
     console.error('Error getting bid:', error);
     throw error;
@@ -312,9 +353,25 @@ export const listenToBid = (bidId: string, callback: (bid: Bid) => void) => {
   return firestore()
     .collection('bids')
     .doc(bidId)
-    .onSnapshot(snapshot => {
+    .onSnapshot(async (snapshot) => {
       if (snapshot.exists) {
         const bidData = { id: snapshot.id, ...snapshot.data() } as Bid;
+        
+        // Fetch the associated product details if productId exists
+        if (bidData.productId) {
+          try {
+            const productSnapshot = await firestore().collection('products').doc(bidData.productId).get();
+            if (productSnapshot.exists) {
+              const productData = { id: productSnapshot.id, ...productSnapshot.data() };
+              // Attach the product details to the bid
+              bidData.productDetails = productData as Product;
+            }
+          } catch (productError) {
+            console.error('Error fetching product details in listener:', productError);
+            // Continue without product details if there's an error
+          }
+        }
+        
         callback(bidData);
       }
     });

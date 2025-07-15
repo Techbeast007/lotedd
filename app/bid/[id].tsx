@@ -63,10 +63,15 @@ export default function BidDetailsScreen() {
         const bidData = await getBidById(bidId);
         setBid(bidData);
         
-        // Set initial values for bidding
-        if (bidData) {
-          setBidAmount(bidData.basePrice.toString());
-          setBidQuantity(bidData.moq.toString());
+        // Set initial values for bidding - using safe checks
+        if (bidData && bidData.basePrice !== undefined && bidData.moq !== undefined) {
+          setBidAmount(String(bidData.basePrice)); // Use String() instead of .toString()
+          setBidQuantity(String(bidData.moq)); // Use String() instead of .toString()
+        } else {
+          // Set fallback values if properties are missing
+          setBidAmount('0');
+          setBidQuantity('1');
+          console.log('Warning: Bid data is incomplete', bidData);
         }
         
         // Get bid offers
@@ -74,7 +79,7 @@ export default function BidDetailsScreen() {
         setBidOffers(offers);
       } catch (err) {
         console.error('Failed to fetch bid details:', err);
-        setError('Could not load bid details. Please try again.');
+        setError(`Could not load bid details: [${err}]`);
       } finally {
         setIsLoading(false);
       }
@@ -191,12 +196,40 @@ export default function BidDetailsScreen() {
   
   // Start chat with seller function
   const handleChatWithSeller = async () => {
-    if (!currentUser || !bid) return;
+    if (!currentUser) {
+      console.error('No current user found');
+      toast.show({
+        placement: "top",
+        render: () => (
+          <Toast action="error">
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>You must be logged in to chat with the seller</ToastDescription>
+          </Toast>
+        )
+      });
+      return;
+    }
+
+    if (!bid) {
+      console.error('No bid data found');
+      toast.show({
+        placement: "top",
+        render: () => (
+          <Toast action="error">
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>Could not load bid information</ToastDescription>
+          </Toast>
+        )
+      });
+      return;
+    }
     
     try {
-      // Ensure we have a valid seller ID
-      if (!bid.sellerId) {
-        console.error('Missing seller ID');
+      console.log('Attempting to chat with seller, bid data:', bid);
+      
+      // Check if seller ID is available and valid
+      if (!bid.sellerId || typeof bid.sellerId !== 'string' || bid.sellerId.trim() === '') {
+        console.error('Missing or invalid seller ID:', bid.sellerId);
         toast.show({
           placement: "top",
           render: () => (
@@ -217,7 +250,6 @@ export default function BidDetailsScreen() {
         id: bid.sellerId,
         name: sellerName,
         type: ParticipantType.SELLER,
-        // Don't include avatar field at all if it's not present
       };
       
       // Create related object with no undefined values
@@ -226,6 +258,8 @@ export default function BidDetailsScreen() {
         id: bid.productId || '', // Empty string fallback
         name: bid.productDetails?.name || 'Product' // Empty string fallback
       };
+
+      console.log('Creating conversation with seller:', sellerParticipant.id);
       
       // Create or get existing conversation with proper validation
       const conversationId = await getOrCreateConversation(
@@ -235,10 +269,11 @@ export default function BidDetailsScreen() {
       
       // Navigate to chat
       if (conversationId) {
+        console.log('Successfully created conversation:', conversationId);
         // Use replace instead of push to prevent stack navigation issues
         router.replace(`/messages/${conversationId}`);
       } else {
-        throw new Error('Failed to create conversation');
+        throw new Error('Failed to create conversation: conversation ID is empty');
       }
       
     } catch (error) {
@@ -303,6 +338,9 @@ export default function BidDetailsScreen() {
     
     return { expired: false, text };
   };
+  
+  // Defensive rendering for bid details
+  const safeValue = (val, fallback = 'N/A') => (val !== undefined && val !== null ? val.toString() : fallback);
   
   // Loading state
   if (isLoading) {
@@ -411,17 +449,17 @@ export default function BidDetailsScreen() {
           <View style={styles.detailsGrid}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Base Price</Text>
-              <Text style={styles.detailValue}>₹{bid.basePrice}</Text>
+              <Text style={styles.detailValue}>₹{safeValue(bid?.basePrice)}</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Minimum Order</Text>
-              <Text style={styles.detailValue}>{bid.moq} units</Text>
+              <Text style={styles.detailValue}>{safeValue(bid?.moq)} units</Text>
             </View>
             
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>End Date</Text>
-              <Text style={styles.detailValue}>{formatDate(bid.bidEndTime)}</Text>
+              <Text style={styles.detailValue}>{formatDate(bid?.bidEndTime)}</Text>
             </View>
             
             <View style={styles.detailItem}>
@@ -640,7 +678,7 @@ export default function BidDetailsScreen() {
               
               {offer.message && (
                 <View className="mt-3 p-3 bg-slate-50 rounded-lg">
-                  <Text className="text-sm text-slate-600">{offer.message}</Text>
+                  <Text className="text-sm text-slate600">{offer.message}</Text>
                 </View>
               )}
             </Card>
