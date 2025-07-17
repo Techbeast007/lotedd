@@ -1,5 +1,6 @@
 'use client';
 
+import CountryCodeSelector from '@/components/CountryCodeSelector';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -46,7 +47,12 @@ const LoadingSpinner = () => {
 };
 
 // Simple animation for toast
-const FadeInView = (props) => {
+interface FadeInViewProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+const FadeInView = (props: FadeInViewProps) => {
   const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -63,7 +69,7 @@ const FadeInView = (props) => {
         useNativeDriver: true,
       }).start();
     };
-  }, []);
+  }, [opacity]);
 
   return (
     <Animated.View style={{ ...props.style, opacity }}>
@@ -73,7 +79,12 @@ const FadeInView = (props) => {
 };
 
 // Simple animation for screen transitions
-const SlideInView = (props) => {
+interface SlideInViewProps {
+  style?: any;
+  children: React.ReactNode;
+}
+
+const SlideInView = (props: SlideInViewProps) => {
   const translateX = useRef(new Animated.Value(300)).current;
 
   useEffect(() => {
@@ -82,7 +93,7 @@ const SlideInView = (props) => {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [translateX]);
 
   return (
     <Animated.View style={{ ...props.style, transform: [{ translateX }] }}>
@@ -95,8 +106,8 @@ export default function AuthScreen() {
   const [screen, setScreen] = useState('login');
   const [countryCode, setCountryCode] = useState('+91');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [confirmation, setConfirmation] = useState(null);
+  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
+  const [confirmation, setConfirmation] = useState<any>(null);
   const [toast, setToast] = useState({ message: '', type: '', visible: false });
   const [isLoading, setIsLoading] = useState(false);
   const [phoneError, setPhoneError] = useState('');
@@ -105,7 +116,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const { role } = useLocalSearchParams();
   
-  const inputRefs = useRef([]);
+  const inputRefs = useRef<(TextInput | null)[]>([]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -140,9 +151,9 @@ export default function AuthScreen() {
     };
     
     checkAuthState();
-  }, []);
+  }, [router]);
 
-  const showToast = (message, type) => {
+  const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type, visible: true });
     setTimeout(() => setToast({ ...toast, visible: false }), 5000);
   };
@@ -180,8 +191,7 @@ export default function AuthScreen() {
         if (inputRefs.current[0]) {
           inputRefs.current[0].focus();
         }
-      }, 500);
-    } catch (error) {
+      }, 500);      } catch (error: any) {
       console.error('Login error:', error);
       const errorMessage = error.message || 'Failed to send OTP';
       
@@ -197,7 +207,7 @@ export default function AuthScreen() {
     }
   };
 
-  const handleOtpChange = (text, index) => {
+  const handleOtpChange = (text: string, index: number) => {
     const newOtp = [...otp];
     newOtp[index] = text;
     setOtp(newOtp);
@@ -207,7 +217,7 @@ export default function AuthScreen() {
     }
   };
 
-  const handleKeyPress = (e, index) => {
+  const handleKeyPress = (e: any, index: number) => {
     if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
@@ -241,29 +251,48 @@ export default function AuthScreen() {
 
       if (userExists) {
         // Get existing user roles
-        const { primaryRole, secondaryRole, currentRole } = await handleExistingUserRoles(user.uid, role as string);
-
+        const { primaryRole, secondaryRole } = await handleExistingUserRoles(user.uid, role as string);
+        
+        // Check if user is trying to use a role they haven't used before
+        const isNewRoleForUser = primaryRole !== role && secondaryRole !== role;
+        
         // Save the full user object and roles in AsyncStorage
         const userData = {
           uid: user.uid,
           phoneNumber: user.phoneNumber,
           primaryRole,
-          secondaryRole: secondaryRole || null,
-          currentRole, // The role the user is currently using
+          secondaryRole: isNewRoleForUser && !secondaryRole ? role : secondaryRole,
+          currentRole: role, // The role the user is currently using
         };
         await AsyncStorage.setItem('user', JSON.stringify(userData));
         await AsyncStorage.setItem('primaryRole', primaryRole);
-        await AsyncStorage.setItem('secondaryRole', secondaryRole || '');
-        await AsyncStorage.setItem('currentRole', currentRole);
+        await AsyncStorage.setItem('secondaryRole', isNewRoleForUser && !secondaryRole ? role : (secondaryRole || ''));
+        await AsyncStorage.setItem('currentRole', role as string);
 
-        showToast('Login successful!', 'success');
+        // Check if this user has onboarded for this role already
+        const hasOnboarded = await checkIfUserHasOnboardedForRole(user.uid, role as string);
         
-        // Redirect based on the current role the user has selected
-        if (currentRole === 'buyer') {
-          // Navigate to the buyer home screen
-          router.replace('/(buyer)/home');
+        if (isNewRoleForUser && !hasOnboarded) {
+          // If user is using a new role and hasn't completed onboarding for it
+          showToast('Please complete your profile for this role', 'success');
+          
+          // If this is a secondary role, update it in the database
+          if (!secondaryRole) {
+            await updateUserRolesInDatabase(user.uid, primaryRole, role as string);
+          }
+          
+          router.push('/onboarding');
         } else {
-          router.replace('/(tabs)');
+          // User has used this role before
+          showToast('Login successful!', 'success');
+          
+          // Redirect based on the current role the user has selected
+          if (role === 'buyer') {
+            // Navigate to the buyer home screen
+            router.replace('/(buyer)/home');
+          } else {
+            router.replace('/(tabs)');
+          }
         }
       } else {
         // New user - set their selected role as primary role
@@ -284,8 +313,7 @@ export default function AuthScreen() {
 
         showToast('Welcome! Redirecting to onboarding.', 'success');
         router.push('/onboarding');
-      }
-    } catch (error) {
+      }      } catch (error: any) {
       console.error('OTP verification error:', error);
       const errorMessage = error.message || 'Invalid OTP';
       
@@ -325,8 +353,7 @@ export default function AuthScreen() {
       // Focus the first OTP input
       if (inputRefs.current[0]) {
         inputRefs.current[0].focus();
-      }
-    } catch (error) {
+      }      } catch (error: any) {
       console.error('Resend OTP error:', error);
       const errorMessage = error.message || 'Failed to resend OTP';
       
@@ -343,8 +370,19 @@ export default function AuthScreen() {
   const checkIfUserExists = async (uid: string): Promise<boolean> => {
     try {
       console.log('Checking if user exists:', uid);
+      
+      // Check if user document exists in Firestore
       const userDoc = await firestore().collection('users').doc(uid).get();
-      return userDoc.exists; // Returns true if the user document exists
+      const data = userDoc.data();
+      
+      // If the document has data, the user exists
+      if (data) {
+        console.log('User exists in Firestore with data');
+        return true;
+      }
+      
+      console.log('User does not exist in Firestore or has no data');
+      return false;
     } catch (error) {
       console.error('Error checking if user exists:', error);
       return false; // Default to user not existing in case of an error
@@ -367,10 +405,67 @@ export default function AuthScreen() {
     }
   };
 
+  const checkIfUserHasOnboardedForRole = async (uid: string, role: string): Promise<boolean> => {
+    try {
+      console.log('Checking if user has onboarded for role:', role);
+      
+      // Get user document
+      const userDocRef = firestore().collection('users').doc(uid);
+      const userDoc = await userDocRef.get();
+      
+      // Get user data
+      const userData = userDoc.data();
+      
+      // If document doesn't exist or has no data, create a basic one to avoid future errors
+      if (!userData) {
+        console.log('User document does not exist or is empty, creating a basic entry');
+        try {
+          // Create a minimal user document to avoid future errors
+          await userDocRef.set({
+            primaryRole: role,
+            createdAt: firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (createError) {
+          console.error('Error creating user document:', createError);
+        }
+        return false;
+      }
+      
+      // Check role-specific onboarding flags
+      if (role === 'buyer') {
+        // Check the specific buyer onboarding flag or fall back to check if they have basic fields
+        return userData.buyerOnboardingCompleted === true || 
+               (!!userData.name && (userData.onboardingCompleted === true || 
+                                   userData.primaryRole === 'buyer'));
+      }
+      
+      if (role === 'seller') {
+        // Check the specific seller onboarding flag or fall back to check if they have seller-specific fields
+        return userData.sellerOnboardingCompleted === true || 
+               (!!userData.name && !!userData.gstNumber);
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking if user has onboarded:', error);
+      return false;
+    }
+  };
+
   const handleExistingUserRoles = async (uid: string, newRole: string) => {
     try {
       console.log('Handling existing user roles for:', uid);
-      const userRoles = await getUserRolesFromDatabase(uid);
+      let userRoles;
+      
+      try {
+        // Try to get user roles, but handle the case where document doesn't exist
+        userRoles = await getUserRolesFromDatabase(uid);
+      } catch (error) {
+        // If there's an error (like document not existing), create a basic user entry
+        console.log('Error getting user roles, creating default entry:', error);
+        await saveUserWithRole(uid, newRole, null);
+        return { primaryRole: newRole, secondaryRole: null, currentRole: newRole };
+      }
 
       let primaryRole = userRoles.primaryRole;
       let secondaryRole = userRoles.secondaryRole;
@@ -408,12 +503,13 @@ export default function AuthScreen() {
     try {
       console.log('Getting user roles from database for:', uid);
       const userDoc = await firestore().collection('users').doc(uid).get();
-      if (userDoc.exists) {
-        const data = userDoc.data();
+      const data = userDoc.data();
+      
+      if (data) {
         console.log('User data retrieved:', data);
         return { 
-          primaryRole: data?.primaryRole || 'unknown', 
-          secondaryRole: data?.secondaryRole || null 
+          primaryRole: data.primaryRole || 'unknown', 
+          secondaryRole: data.secondaryRole || null 
         };
       } else {
         console.log('User document does not exist');
@@ -428,11 +524,29 @@ export default function AuthScreen() {
   const updateUserRolesInDatabase = async (uid: string, primaryRole: string, secondaryRole: string | null) => {
     try {
       console.log('Updating user roles in database:', { uid, primaryRole, secondaryRole });
-      await firestore().collection('users').doc(uid).update({
-        primaryRole,
-        secondaryRole,
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
+      
+      // First check if the user document exists to avoid "not found" errors
+      const userDoc = await firestore().collection('users').doc(uid).get();
+      const data = userDoc.data();
+      
+      if (!data) {
+        // Document doesn't exist, create it with set instead of update
+        console.log('User document does not exist, creating it...');
+        await firestore().collection('users').doc(uid).set({
+          primaryRole,
+          secondaryRole,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+          createdAt: firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Document exists, update it
+        await firestore().collection('users').doc(uid).update({
+          primaryRole,
+          secondaryRole,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      
       console.log(`Roles updated for UID: ${uid}, Primary Role: ${primaryRole}, Secondary Role: ${secondaryRole}`);
     } catch (error) {
       console.error('Error updating user roles:', error);
@@ -471,12 +585,10 @@ export default function AuthScreen() {
             
             <RNText style={styles.inputLabel}>Phone Number</RNText>
             <View style={styles.phoneInputContainer}>
-              <TextInput
-                placeholder="+91"
+              <CountryCodeSelector
                 value={countryCode}
-                onChangeText={setCountryCode}
+                onChange={setCountryCode}
                 style={styles.countryCodeInput}
-                keyboardType="phone-pad"
               />
               <TextInput
                 placeholder="Enter Phone Number"
@@ -540,7 +652,11 @@ export default function AuthScreen() {
               {[0, 1, 2, 3, 4, 5].map((index) => (
                 <TextInput
                   key={index}
-                  ref={(ref) => inputRefs.current[index] = ref}
+                  ref={(ref) => {
+                    if (ref) {
+                      inputRefs.current[index] = ref;
+                    }
+                  }}
                   style={styles.otpInput}
                   value={otp[index]}
                   onChangeText={(text) => handleOtpChange(text.replace(/[^0-9]/g, ''), index)}
@@ -570,7 +686,7 @@ export default function AuthScreen() {
             </TouchableOpacity>
             
             <View style={styles.resendContainer}>
-              <RNText style={styles.resendText}>Didn't receive the code? </RNText>
+              <RNText style={styles.resendText}>Didn&apos;t receive the code? </RNText>
               {countdown > 0 ? (
                 <RNText style={styles.countdownText}>Resend in {countdown}s</RNText>
               ) : (
@@ -641,16 +757,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   countryCodeInput: {
-    width: 70,
+    width: 100,
     height: 52,
-    borderColor: '#d1d5db',
-    borderWidth: 1.5,
-    borderRadius: 10,
-    paddingHorizontal: 12,
     marginRight: 8,
-    fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#f9fafb',
   },
   phoneInput: {
     flex: 1,

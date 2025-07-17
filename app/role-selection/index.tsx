@@ -14,14 +14,37 @@ import { Image } from "react-native";
 
 export default function RoleSelectionScreen() {
   const router = useRouter();
+  
+  React.useEffect(() => {
+    // Check if user is already authenticated
+    const checkAuthState = async () => {
+      try {
+        const user = await AsyncStorage.getItem('user');
+        const currentRole = await AsyncStorage.getItem('currentRole');
+        
+        if (user && currentRole) {
+          // User is already logged in with a role, redirect to appropriate screen
+          if (currentRole === 'buyer') {
+            router.replace('/(buyer)/home');
+          } else if (currentRole === 'seller') {
+            router.replace('/(tabs)');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking auth state:', error);
+      }
+    };
+    
+    checkAuthState();
+  }, [router]);
 
   const handleRoleSelection = (role: 'seller' | 'buyer') => {
     // Save the selected role in localStorage
     const saveRoleToStorage = async (role: 'seller' | 'buyer') => {
       try {
-      await AsyncStorage.setItem('currentRole', role);
+        await AsyncStorage.setItem('currentRole', role);
       } catch (error) {
-      console.error('Failed to save the role to storage:', error);
+        console.error('Failed to save the role to storage:', error);
       }
     };
 

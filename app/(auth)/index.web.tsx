@@ -1,5 +1,6 @@
 'use client';
 
+import CountryCodeSelector from '@/components/CountryCodeSelector';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { GluestackUIProvider } from '@/components/ui/gluestack-ui-provider';
@@ -240,20 +241,13 @@ export default function AuthScreen() {
               Enter your phone number to continue.
             </Text>
             <VStack className="flex-row items-center mb-4">
-              <TextInput
-                placeholder="+91"
+              <CountryCodeSelector
                 value={countryCode}
-                onChangeText={setCountryCode}
+                onChange={setCountryCode}
                 style={{
-                  width: 60,
+                  width: 100,
                   height: 50,
-                  borderColor: '#ddd',
-                  borderWidth: 1,
-                  borderRadius: 8,
-                  paddingHorizontal: 10,
                   marginRight: 10,
-                  fontSize: 16,
-                  backgroundColor: '#f9f9f9',
                 }}
               />
               <TextInput

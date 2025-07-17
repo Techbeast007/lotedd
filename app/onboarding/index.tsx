@@ -3,7 +3,7 @@
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
-import { Input, InputField, InputSlot } from '@/components/ui/input';
+import { Input, InputField } from '@/components/ui/input';
 import { VStack } from '@/components/ui/vstack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
@@ -21,12 +21,38 @@ export default function OnboardingScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    // Fetch the role from AsyncStorage
-    const fetchRole = async () => {
-      const storedRole = await AsyncStorage.getItem('currentRole');
-      setRole(storedRole);
+    // Fetch the role and user data from AsyncStorage
+    const fetchUserInfo = async () => {
+      try {
+        const storedRole = await AsyncStorage.getItem('currentRole');
+        setRole(storedRole);
+        
+        // Check if we have existing user data to pre-populate fields
+        const userJson = await AsyncStorage.getItem('user');
+        if (userJson) {
+          const userData = JSON.parse(userJson);
+          
+          if (userData.name) {
+            setName(userData.name);
+          }
+          
+          if (userData.email) {
+            setEmail(userData.email);
+          }
+          
+          if (userData.profilePicture) {
+            setProfilePicture(userData.profilePicture);
+          }
+          
+          if (storedRole === 'seller' && userData.gstNumber) {
+            setGstNumber(userData.gstNumber);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      }
     };
-    fetchRole();
+    fetchUserInfo();
   }, []);
 
   const handleProfilePictureUpload = async () => {
@@ -50,30 +76,66 @@ export default function OnboardingScreen() {
 
   const handleSave = async () => {
     try {
-      const user = JSON.parse(await AsyncStorage.getItem('user') || '{}');
+      console.log('Save button pressed with values:', { name, email, role, gstNumber });
+      
+      if (!name || name.trim() === '') {
+        console.log('Name validation failed:', { name });
+        Alert.alert('Missing Information', 'Please enter your name to continue.');
+        return;
+      }
+      
+      if (role === 'seller' && (!gstNumber || gstNumber.trim() === '')) {
+        console.log('GST validation failed:', { gstNumber });
+        Alert.alert('Missing Information', 'Please enter your GST number to continue.');
+        return;
+      }
+
+      const userJson = await AsyncStorage.getItem('user');
+      if (!userJson) {
+        Alert.alert('Error', 'User information not found. Please log in again.');
+        router.push('/role-selection');
+        return;
+      }
+      
+      const user = JSON.parse(userJson);
       const uid = user.uid;
 
+      // Base user data
       const userData: any = {
         name,
         email,
-        profilePicture,
+        onboardingCompleted: true,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
       };
-
-      if (role === 'seller') {
-        userData.gstNumber = gstNumber;
+      
+      // Add profile picture if uploaded
+      if (profilePicture) {
+        userData.profilePicture = profilePicture;
       }
 
-      // Use set with merge option instead of update to handle non-existent documents
+      // Add role-specific fields
+      if (role === 'seller') {
+        userData.gstNumber = gstNumber;
+        userData.sellerOnboardingCompleted = true;
+      } else if (role === 'buyer') {
+        userData.buyerOnboardingCompleted = true;
+      }
+
+      console.log(`Saving ${role} onboarding data:`, userData);
+
+      // Use set with merge option to update the user document
       await firestore().collection('users').doc(uid).set(userData, { merge: true });
+      
+      // Update local storage
       await AsyncStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
 
       console.log('User data saved successfully:', userData);
       
       // Navigate to appropriate tab group based on user role
       if (role === 'buyer') {
-        router.push('/(buyer)');
+        router.replace('/(buyer)/home');
       } else {
-        router.push('/(tabs)');
+        router.replace('/(tabs)');
       }
     } catch (error) {
       console.error('Error saving user data:', error);
@@ -114,39 +176,31 @@ export default function OnboardingScreen() {
 
         {/* Name Input */}
         <Input className="mb-4">
-          <InputField placeholder="Enter your name" />
-          <InputSlot>
-            <InputField
-              value={name}
-              onChangeText={setName}
-              style={{ display: 'none' }} // Hide the native input if needed
-            />
-          </InputSlot>
+          <InputField 
+            placeholder="Enter your name" 
+            value={name}
+            onChangeText={setName}
+          />
         </Input>
 
         {/* Email Input */}
         <Input className="mb-4">
-          <InputField placeholder="Enter your email" type="text" />
-          <InputSlot>
-            <InputField
-              value={email}
-              onChangeText={setEmail}
-              style={{ display: 'none' }} // Hide the native input if needed
-            />
-          </InputSlot>
+          <InputField 
+            placeholder="Enter your email" 
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+          />
         </Input>
 
         {/* GST Number Input (Only for Sellers) */}
         {role === 'seller' && (
           <Input className="mb-4">
-            <InputField placeholder="Enter your GST number" />
-            <InputSlot>
-              <InputField
-                value={gstNumber}
-                onChangeText={setGstNumber}
-                style={{ display: 'none' }} // Hide the native input if needed
-              />
-            </InputSlot>
+            <InputField 
+              placeholder="Enter your GST number" 
+              value={gstNumber}
+              onChangeText={setGstNumber}
+            />
           </Input>
         )}
 

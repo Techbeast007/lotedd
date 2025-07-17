@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import firestore from '@react-native-firebase/firestore';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ChatConversation, chatService, Message, ParticipantType } from '../chatService';
 
@@ -64,24 +65,69 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const loadUserData = async () => {
       try {
+        // Get user data from AsyncStorage
         const userData = await AsyncStorage.getItem('user');
-        if (userData) {
-          const user = JSON.parse(userData);
-          setUserId(user.uid);
+        if (!userData) {
+          console.error('No user data found in AsyncStorage');
+          setLoadingConversations(false);
+          return;
+        }
+        
+        const user = JSON.parse(userData);
+        const uid = user.uid;
+        
+        if (!uid) {
+          console.error('User ID is missing from user data');
+          setLoadingConversations(false);
+          return;
+        }
+        
+        setUserId(uid);
+        
+        // Get additional user profile data from Firestore if needed
+        try {
+          const userDoc = await firestore().collection('users').doc(uid).get();
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            // Use Firestore data if available, otherwise fall back to AsyncStorage data
+            setUserName(userData?.displayName || user.displayName || user.email || 'User');
+            
+            // Set avatar if available in Firestore
+            if (userData?.photoURL) {
+              setUserAvatar(userData.photoURL);
+            } else if (user.photoURL) {
+              setUserAvatar(user.photoURL);
+            }
+          } else {
+            // Fall back to AsyncStorage data
+            setUserName(user.displayName || user.email || 'User');
+            if (user.photoURL) {
+              setUserAvatar(user.photoURL);
+            }
+          }
+        } catch (firestoreError) {
+          console.error('Error fetching user data from Firestore:', firestoreError);
+          // Fall back to AsyncStorage data
           setUserName(user.displayName || user.email || 'User');
-          
-          // Determine user type from stored role
-          const role = await AsyncStorage.getItem('currentRole');
-          setUserType(role === 'seller' ? ParticipantType.SELLER : ParticipantType.BUYER);
-          
-          // Set avatar if available
           if (user.photoURL) {
             setUserAvatar(user.photoURL);
           }
-          
-          // Load conversations once we have user data
-          await refreshConversations();
         }
+        
+        // Determine user type from stored role
+        const role = await AsyncStorage.getItem('currentRole');
+        setUserType(role === 'seller' ? ParticipantType.SELLER : ParticipantType.BUYER);
+        
+        console.log('Chat context user data loaded:', {
+          uid,
+          name: userName || user.displayName || user.email || 'User',
+          type: role === 'seller' ? 'SELLER' : 'BUYER',
+          hasAvatar: !!(user.photoURL || userAvatar)
+        });
+        
+        // Load conversations once we have user data
+        await refreshConversations();
       } catch (error) {
         console.error('Error loading user data in chat context:', error);
       } finally {
@@ -249,9 +295,20 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     text: string,
     attachments?: { type: 'image' | 'document' | 'product'; url: string; name: string; size?: number }[]
   ) => {
-    if (!userId || !userName) return;
+    if (!userId || !userName) {
+      console.error('Cannot send message: User ID or name is missing');
+      return;
+    }
     
     try {
+      // Log the sender information for debugging
+      console.log('Sending message as:', {
+        userId,
+        userName,
+        userType,
+        hasAvatar: !!userAvatar
+      });
+      
       // Create a clean message object with no undefined fields
       const messageData: {
         text: string;
@@ -263,7 +320,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } = {
         text,
         senderId: userId,
-        senderName: userName,
+        senderName: userName || 'Unknown User', // Ensure we always have a name
         senderType: userType,
       };
       
