@@ -6,6 +6,7 @@ import { Text } from '@/components/ui/text';
 import { VStack } from '@/components/ui/vstack';
 import { CartItem } from '@/services/cartService';
 import { useCart } from '@/services/context/CartContext';
+import { useRouter } from 'expo-router';
 import { Heart, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react-native';
 import React from 'react';
 import { Animated, Image, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
@@ -15,6 +16,7 @@ export default function CartScreen() {
   const { items, removeItem, updateQuantity, clearItems, totalPrice, isLoading } = useCart();
   const insets = useSafeAreaInsets();
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const router = useRouter();
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -23,6 +25,10 @@ export default function CartScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  const handleCheckout = () => {
+    router.push('/(checkout)');
+  };
 
   const renderItem = ({ item, index }: { item: CartItem; index: number }) => {
     const itemPrice = item.product.discountPrice && item.product.discountPrice > 0 
@@ -195,6 +201,7 @@ export default function CartScreen() {
       <Button 
         size="md" 
         className="bg-blue-500 rounded-xl px-8"
+        onPress={() => router.push('/(buyer)/shop')}
       >
         <ButtonText className="text-white font-bold">Start Shopping</ButtonText>
       </Button>
@@ -301,6 +308,7 @@ export default function CartScreen() {
                   shadowRadius: 8,
                   elevation: 4,
                 }}
+                onPress={handleCheckout}
               >
                 <HStack className="items-center" style={{ gap: 8 }}>
                   <Text className="text-white text-base font-bold">Proceed to Checkout</Text>

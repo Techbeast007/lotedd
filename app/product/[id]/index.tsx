@@ -15,6 +15,7 @@ import { getReviews, submitReview } from '@/services/reviewService';
 import { addToWishlist, removeFromWishlist } from '@/services/wishlistService';
 // Video import for native module
 import { ResizeMode, Video } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ExpoSharing from 'expo-sharing';
 import { ChevronLeft, Heart, MessageSquare, Share as ShareIcon, Star, Truck } from 'lucide-react-native';
@@ -24,6 +25,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  Image as RNImage,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -99,7 +101,7 @@ export default function ProductDetailScreen() {
   // Load data on mount
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, id]);
   
   // Handle media scroll
   const onMediaScroll = (event: any) => {
@@ -107,6 +109,17 @@ export default function ProductDetailScreen() {
     const index = Math.round(contentOffsetX / width);
     setSelectedMediaIndex(index);
   };
+
+  // Debug function to check images and related products
+  useEffect(() => {
+    if (product) {
+      console.log("Product loaded:", product.name);
+      console.log("Images array:", product.images);
+      console.log("Featured image:", product.featuredImage);
+      console.log("Videos array:", product.videos);
+      console.log("Related products:", relatedProducts.length);
+    }
+  }, [product, relatedProducts]);
   
   // Handle wishlist toggle
   const handleWishlistToggle = async () => {
@@ -302,15 +315,40 @@ export default function ProductDetailScreen() {
       // Check if sharing is available
       const isAvailable = await ExpoSharing.isAvailableAsync();
       if (isAvailable) {
-        // If image is available, share with image
+        // If image is available, download it first then share
         if (product.featuredImage) {
-          await ExpoSharing.shareAsync(product.featuredImage, {
-            dialogTitle: `Share ${product.name}`,
-            mimeType: 'image/jpeg',
-            UTI: 'public.jpeg',
+          // Show toast to indicate download is happening
+          toast.show({
+            render: () => (
+              <Toast action="info" variant="solid">
+                <ToastDescription>Preparing image for sharing...</ToastDescription>
+              </Toast>
+            )
           });
+
+          // Create a local file path in the cache directory
+          const localUri = FileSystem.cacheDirectory + `product-${product.id}-share.jpg`;
+          
+          // Download the image
+          const downloadResult = await FileSystem.downloadAsync(product.featuredImage, localUri);
+          
+          if (downloadResult.status === 200) {
+            // Share the local file
+            await ExpoSharing.shareAsync(localUri, {
+              dialogTitle: `Share ${product.name}`,
+              mimeType: 'image/jpeg',
+              UTI: 'public.jpeg',
+            });
+          } else {
+            // If download fails, share text only
+            console.log('Failed to download image for sharing:', downloadResult);
+            await ExpoSharing.shareAsync(shareMessage, {
+              dialogTitle: `Share ${product.name}`,
+              mimeType: 'text/plain',
+            });
+          }
         } else {
-          // Otherwise just share text
+          // If no image, share text only
           await ExpoSharing.shareAsync(shareMessage, {
             dialogTitle: `Share ${product.name}`,
             mimeType: 'text/plain',
@@ -360,11 +398,35 @@ export default function ProductDetailScreen() {
   }
   
   // Prepare media items (both images and videos)
-  const mediaItems = [
-    ...(product.images || []).map(image => ({ type: 'image', url: image })),
-    // Including videos but display will be handled differently due to native module issues
-    ...(product.videos || []).map(video => ({ type: 'video', url: video }))
-  ];
+  const mediaItems = [];
+  
+  // First add the featured image if it exists and isn't already in the images array
+  if (product.featuredImage && (!product.images || !product.images.includes(product.featuredImage))) {
+    mediaItems.push({ type: 'image', url: product.featuredImage });
+  }
+  
+  // Then add all other images
+  if (product.images && Array.isArray(product.images)) {
+    product.images.forEach(image => {
+      if (image) { // Only add non-null images
+        mediaItems.push({ type: 'image', url: image });
+      }
+    });
+  }
+  
+  // Add videos if they exist
+  if (product.videos && Array.isArray(product.videos)) {
+    product.videos.forEach(video => {
+      if (video) { // Only add non-null videos
+        mediaItems.push({ type: 'video', url: video });
+      }
+    });
+  }
+  
+  // If no media items, add a placeholder
+  if (mediaItems.length === 0) {
+    mediaItems.push({ type: 'image', url: 'https://via.placeholder.com/400x400?text=No+Image' });
+  }
   
   // Calculate average rating
   const avgRating = reviews.length > 0 
@@ -407,12 +469,13 @@ export default function ProductDetailScreen() {
             renderItem={({ item }) => (
               <View style={styles.mediaItem}>
                 {item.type === 'image' ? (
-                  <Image
-                    source={{ uri: item.url }}
-                    alt={product.name}
-                    style={styles.productImage}
-                    resizeMode="contain"
-                  />
+                  <View style={styles.imageWrapper}>
+                    <RNImage
+                      source={{ uri: item.url }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="contain"
+                    />
+                  </View>
                 ) : (
                   <Video
                     source={{ uri: item.url }}
@@ -811,18 +874,21 @@ const styles = StyleSheet.create({
   },
   mediaContainer: {
     position: 'relative',
-    height: width * 0.8, // Maintain aspect ratio
+    height: width,
     backgroundColor: '#F3F4F6',
+    width: width,
   },
   mediaItem: {
     width: width,
-    height: width * 0.8,
+    height: width,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F3F4F6',
   },
   productImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   productVideo: {
     width: '100%',
@@ -1072,6 +1138,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 8,
     marginBottom: 6,
+    resizeMode: 'cover', // Changed from default to 'cover' for better filling
   },
   relatedProductName: {
     fontSize: 14,
@@ -1165,5 +1232,14 @@ const styles = StyleSheet.create({
   submitButton: {
     flex: 1,
     backgroundColor: '#4F46E5',
+  },
+  imageWrapper: {
+    width: width,
+    height: width,
+    overflow: 'hidden',
+    backgroundColor: '#F3F4F6',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

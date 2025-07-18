@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import BidPayment from '@/components/BidPayment';
 import { getCurrentUser } from '@/services/authService';
 import { Bid, BidOffer, getBidById, getBidOffersByBidId, listenToBid, listenToBidOffers, submitBidOffer } from '@/services/biddingService';
 import { ParticipantType } from '@/services/chatService';
@@ -52,6 +53,9 @@ export default function BidDetailsScreen() {
   const [bidQuantity, setBidQuantity] = useState('');
   const [bidMessage, setBidMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Add a new state for payment success
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   
   // Load bid data
   useEffect(() => {
@@ -632,6 +636,27 @@ export default function BidDetailsScreen() {
                         </Text>
                       </View>
                     </HStack>
+
+                    {/* Add payment component for accepted bids */}
+                    {userOffer.status === 'accepted' && !paymentSuccess && (
+                      <BidPayment
+                        bidOffer={userOffer}
+                        onPaymentSuccess={handlePaymentSuccess}
+                        onPaymentFailure={handlePaymentFailure}
+                      />
+                    )}
+
+                    {/* Payment success message */}
+                    {userOffer.status === 'accepted' && paymentSuccess && (
+                      <View style={styles.paymentSuccessContainer}>
+                        <Box style={styles.paymentSuccessBadge}>
+                          <Text style={styles.paymentSuccessText}>Payment Completed</Text>
+                        </Box>
+                        <Text style={styles.paymentSuccessMessage}>
+                          Your 50% advance payment has been processed successfully. The seller will contact you soon regarding shipping details.
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 ))}
               </Card>
@@ -653,9 +678,6 @@ export default function BidDetailsScreen() {
                       <Text style={styles.bidDetailLabel}>Your bid amount:</Text>
                       <Text style={styles.bidAmountValue}>₹{userOffer.bidAmount}</Text>
                     </HStack>
-                    <Text className="text-lg font-semibold text-indigo-900">
-                      ₹{userOffer.bidAmount}
-                    </Text>
                     
                     <HStack className="items-center space-x-2 mt-1">
                       <Text className="text-sm text-indigo-800">Quantity:</Text>
@@ -664,65 +686,104 @@ export default function BidDetailsScreen() {
                       </Text>
                     </HStack>
                   
-                  <HStack className="items-center space-x-2 mt-1">
-                    <Text className="text-sm text-indigo-800">Status:</Text>
-                    <Box 
-                      className={`py-1 px-2 rounded-full ${
-                        userOffer.status === 'accepted' ? 'bg-green-100' :
-                        userOffer.status === 'rejected' ? 'bg-red-100' :
-                        userOffer.status === 'counteroffered' ? 'bg-amber-100' : 'bg-blue-100'
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-medium ${
-                          userOffer.status === 'accepted' ? 'text-green-800' :
-                          userOffer.status === 'rejected' ? 'text-red-800' :
-                          userOffer.status === 'counteroffered' ? 'text-amber-800' : 'text-blue-800'
+                    <HStack className="items-center space-x-2 mt-1">
+                      <Text className="text-sm text-indigo-800">Status:</Text>
+                      <Box 
+                        className={`py-1 px-2 rounded-full ${
+                          userOffer.status === 'accepted' ? 'bg-green-100' :
+                          userOffer.status === 'rejected' ? 'bg-red-100' :
+                          userOffer.status === 'counteroffered' ? 'bg-amber-100' : 'bg-blue-100'
                         }`}
                       >
-                        {userOffer.status.charAt(0).toUpperCase() + userOffer.status.slice(1)}
-                      </Text>
-                    </Box>
-                  </HStack>
-                  
-                  <HStack className="mt-4 space-x-2">
-                    {userOffer.status === 'pending' && !timeLeftInfo.expired && (
+                        <Text
+                          className={`text-xs font-medium ${
+                            userOffer.status === 'accepted' ? 'text-green-800' :
+                            userOffer.status === 'rejected' ? 'text-red-800' :
+                            userOffer.status === 'counteroffered' ? 'text-amber-800' : 'text-blue-800'
+                          }`}
+                        >
+                          {userOffer.status.charAt(0).toUpperCase() + userOffer.status.slice(1)}
+                        </Text>
+                      </Box>
+                    </HStack>
+
+                    {/* Add payment component for accepted bids */}
+                    {userOffer.status === 'accepted' && !paymentSuccess && (
+                      <View style={{ marginTop: 16 }}>
+                        <BidPayment
+                          bidOffer={userOffer}
+                          onPaymentSuccess={handlePaymentSuccess}
+                          onPaymentFailure={handlePaymentFailure}
+                        />
+                      </View>
+                    )}
+
+                    {/* Payment success message */}
+                    {userOffer.status === 'accepted' && paymentSuccess && (
+                      <View style={styles.paymentSuccessContainer}>
+                        <Box style={styles.paymentSuccessBadge}>
+                          <Text style={styles.paymentSuccessText}>Payment Completed</Text>
+                        </Box>
+                        <Text style={styles.paymentSuccessMessage}>
+                          Your 50% advance payment has been processed successfully. The seller will contact you soon regarding shipping details.
+                        </Text>
+                      </View>
+                    )}
+                    
+                    <HStack className="mt-4 space-x-2">
+                      {userOffer.status === 'pending' && !timeLeftInfo.expired && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-indigo-400"
+                          onPress={() => setBidModalVisible(true)}
+                        >
+                          <ButtonText className="text-indigo-700">Update Bid</ButtonText>
+                        </Button>
+                      )}
+                      
                       <Button
                         variant="outline"
                         size="sm"
                         className="border-indigo-400"
-                        onPress={() => setBidModalVisible(true)}
+                        onPress={handleChatWithSeller}
                       >
-                        <ButtonText className="text-indigo-700">Update Bid</ButtonText>
+                        <HStack space="sm">
+                          <MessageCircle size={16} color="#4F46E5" />
+                          <ButtonText className="text-indigo-700">Chat with Seller</ButtonText>
+                        </HStack>
                       </Button>
-                    )}
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-indigo-400"
-                      onPress={handleChatWithSeller}
-                    >
-                      <HStack space="sm">
-                        <MessageCircle size={16} color="#4F46E5" />
-                        <ButtonText className="text-indigo-700">Chat with Seller</ButtonText>
-                      </HStack>
-                    </Button>
-                  </HStack>
-                </View>
-              ))}
+                    </HStack>
+                  </View>
+                ))}
               </Card>
             );
           }
           
           // If no conditions match, show the default state for non-bidders
-          return (
-            <Card className="p-4 rounded-xl mb-4 bg-gray-50 border border-gray-200">
-              <Text className="text-base text-center text-gray-600">
-                This bid has ended. New bids can no longer be placed.
-              </Text>
-            </Card>
-          );
+          if (timeLeftInfo.expired) {
+            return (
+              <Card className="p-4 rounded-xl mb-4 bg-gray-50 border border-gray-200">
+                <Text className="text-base text-center text-gray-600">
+                  This bid has ended. New bids can no longer be placed.
+                </Text>
+              </Card>
+            );
+          } else {
+            return (
+              <Card className="p-4 rounded-xl mb-4">
+                <Text className="text-base text-center text-gray-600 mb-4">
+                  Interested in this item? Place your bid now!
+                </Text>
+                <Button
+                  className="bg-indigo-600"
+                  onPress={() => setBidModalVisible(true)}
+                >
+                  <ButtonText>Place a Bid</ButtonText>
+                </Button>
+              </Card>
+            );
+          }
         })()}
         
         {/* Recent Bids Section */}
@@ -1340,5 +1401,32 @@ const styles = StyleSheet.create({
   },
   counterText: {
     color: '#B45309',
+  },
+  
+  // Payment success styles
+  paymentSuccessContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  paymentSuccessBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  paymentSuccessText: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  paymentSuccessMessage: {
+    color: '#166534',
+    fontSize: 14,
   },
 });

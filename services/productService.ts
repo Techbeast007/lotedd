@@ -314,15 +314,28 @@ export const getProductsByOwnerId = async (ownerId: string): Promise<Product[]> 
  */
 export const getProductById = async (productId: string): Promise<Product | null> => {
   try {
+    console.log(`Fetching product with ID: ${productId}`);
     const productDoc = doc(firestore, 'products', productId);
     const productSnapshot = await getDoc(productDoc);
     
     if (productSnapshot.exists()) {
-      return { 
+      const productData = productSnapshot.data();
+      // Ensure images and videos are arrays if they exist
+      const product = { 
         id: productSnapshot.id, 
-        ...productSnapshot.data() 
+        ...productData,
+        images: productData.images || [],
+        videos: productData.videos || []
       } as Product;
+      
+      console.log(`Successfully fetched product: ${product.name}`);
+      console.log(`Product images: ${JSON.stringify(product.images)}`);
+      console.log(`Product featured image: ${product.featuredImage}`);
+      console.log(`Product videos: ${JSON.stringify(product.videos)}`);
+      
+      return product;
     }
+    console.log(`Product with ID ${productId} not found`);
     return null;
   } catch (error) {
     console.error(`Error fetching product with ID ${productId}:`, error);
