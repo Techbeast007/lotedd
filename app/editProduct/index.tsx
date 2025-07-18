@@ -70,6 +70,11 @@ const EditProduct = () => {
   const [manufacturingCost, setManufacturingCost] = useState('');
   const [sellingPricePerPiece, setSellingPricePerPiece] = useState('');
   const [wholeStockPrice, setWholeStockPrice] = useState('');
+  
+  // New added fields
+  const [moq, setMoq] = useState('');
+  const [condition, setCondition] = useState<'new' | 'used' | 'refurbished'>('new');
+  const [damagePercentage, setDamagePercentage] = useState('');
 
   // Fetch product data when component mounts
   useEffect(() => {
@@ -108,6 +113,12 @@ const EditProduct = () => {
         setManufacturingCost(data.manufacturingCost?.toString() || '');
         setSellingPricePerPiece(data.sellingPricePerPiece?.toString() || '');
         setWholeStockPrice(data.wholeStockPrice?.toString() || '');
+        
+        // Load new added fields
+        setMoq(data.moq?.toString() || '');
+        setCondition(data.condition || 'new');
+        setDamagePercentage(data.damagePercentage?.toString() || '');
+        
         setStatus(data.status || 'live');
         setSkuId(data.skuId || '');
         
@@ -324,6 +335,10 @@ const EditProduct = () => {
         manufacturingCost: parseFloat(manufacturingCost) || 0,
         sellingPricePerPiece: parseFloat(sellingPricePerPiece) || 0,
         wholeStockPrice: parseFloat(wholeStockPrice) || 0,
+        // New added fields
+        moq: parseInt(moq) || 0,
+        condition: condition || 'new',
+        damagePercentage: parseFloat(damagePercentage) || 0,
         updatedAt: firestore.FieldValue.serverTimestamp(),
       });
 
@@ -643,6 +658,18 @@ const EditProduct = () => {
                       />
                     </InputSlot>
                   </Input>
+                  
+                  <Text className="text-md font-medium text-slate-700 mt-2">Minimum Order Quantity</Text>
+                  <Input className="mb-2">
+                    <InputSlot className="pl-3">
+                      <InputField
+                        placeholder="Enter minimum order quantity"
+                        value={moq}
+                        onChangeText={setMoq}
+                        keyboardType="numeric"
+                      />
+                    </InputSlot>
+                  </Input>
                 </VStack>
               </Box>
 
@@ -669,13 +696,55 @@ const EditProduct = () => {
                 </Input>
               </Box>
 
+              {/* Product Condition */}
+              <Box className="mb-7 space-y-8">
+                <Text className="text-xl font-bold mb-4">Product Condition</Text>
+                <Select
+                  selectedValue={condition}
+                  onValueChange={(value) => setCondition(value as 'new' | 'used' | 'refurbished')}
+                  className="w-full mb-4"
+                >
+                  <SelectTrigger variant="outline" size="lg">
+                    <SelectInput placeholder="Select condition" className="w-[90%] h-16" />
+                    <SelectIcon className="mr-3" as={ChevronDownIcon} />
+                  </SelectTrigger>
+                  <SelectPortal>
+                    <SelectBackdrop />
+                    <SelectContent>
+                      <SelectDragIndicatorWrapper>
+                        <SelectDragIndicator />
+                      </SelectDragIndicatorWrapper>
+                      <SelectItem label="New" value="new" />
+                      <SelectItem label="Used" value="used" />
+                      <SelectItem label="Refurbished" value="refurbished" />
+                    </SelectContent>
+                  </SelectPortal>
+                </Select>
+                
+                {(condition === 'used' || condition === 'refurbished') && (
+                  <>
+                    <Text className="text-md font-medium text-slate-700 mt-2">Damage Percentage (%)</Text>
+                    <Input className="mb-4">
+                      <InputSlot className="pl-3">
+                        <InputField
+                          placeholder="Enter damage percentage (0-100)"
+                          value={damagePercentage}
+                          onChangeText={setDamagePercentage}
+                          keyboardType="numeric"
+                        />
+                      </InputSlot>
+                    </Input>
+                  </>
+                )}
+              </Box>
+
               {/* Logistics */}
               <Box className="mb-7 space-y-8">
                 <Text className="text-xl font-bold mb-4">Logistics</Text>
                 <Input className="mb-4">
                   <InputSlot className="pl-3">
                     <InputField
-                      placeholder="Enter weight"
+                      placeholder="Enter weight (kg)"
                       value={weight}
                       onChangeText={setWeight}
                       keyboardType="numeric"
@@ -685,7 +754,7 @@ const EditProduct = () => {
                 <Input className="mb-4">
                   <InputSlot className="pl-3">
                     <InputField
-                      placeholder="Enter dimensions (L x W x H)"
+                      placeholder="Enter dimensions (L x W x H in cm)"
                       value={dimensions}
                       onChangeText={setDimensions}
                     />

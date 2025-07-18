@@ -215,17 +215,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [userId]);
   
   // Load a specific conversation and its messages - memoized to prevent unnecessary rerenders
+  // Enhanced with strict user-based access control to fix privacy issues
   const loadConversation = useCallback(async (conversationId: string) => {
-    if (!userId) return;
+    if (!userId) {
+      console.log('Cannot load conversation: No user ID available');
+      return;
+    }
     
     try {
       setLoadingMessages(true);
+      console.log(`Loading conversation ${conversationId} for user ${userId}`);
       
-      // Get conversation details
-      const conversation = await chatService.getConversationById(conversationId);
+      // Get conversation details with user ID verification
+      const conversation = await chatService.getConversationById(conversationId, userId);
+      
+      // If conversation is null, the user is not authorized
+      if (!conversation) {
+        console.warn(`User ${userId} not authorized to access conversation ${conversationId}`);
+        setCurrentConversation(null);
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
+      
+      // Double check that this user is truly a participant in this conversation
+      const isAuthorized = 
+        conversation.participantIds?.includes(userId) ||
+        conversation.participants?.some(p => p.id === userId);
+      
+      if (!isAuthorized) {
+        console.error(`SECURITY ISSUE: User ${userId} found unauthorized access to conversation ${conversationId}`);
+        setCurrentConversation(null);
+        setMessages([]);
+        setLoadingMessages(false);
+        return;
+      }
       
       // Sort participants so the other user is first (for display purposes)
-      if (conversation && conversation.participants) {
+      if (conversation.participants) {
         // Make a copy of the participants array
         const sortedParticipants = [...conversation.participants];
         
@@ -241,8 +268,14 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setCurrentConversation(conversation);
       
-      // Get messages
-      const { messages: conversationMessages, lastVisible: lastDoc } = await chatService.getMessages(conversationId);
+      // Get messages with user ID verification
+      const { messages: conversationMessages, lastVisible: lastDoc } = await chatService.getMessages(
+        conversationId,
+        20,
+        undefined,
+        userId
+      );
+      
       setMessages(conversationMessages);
       setLastVisible(lastDoc);
       
@@ -256,18 +289,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [userId]);
   
   // Load more messages (pagination) - memoized to prevent unnecessary rerenders
+  // Enhanced with user-based access control
   const loadMoreMessages = useCallback(async (): Promise<boolean> => {
     if (!userId || !currentConversation || !lastVisible) return false;
     
     try {
+      console.log(`Loading more messages for conversation ${currentConversation.id} as user ${userId}`);
+      
       const { messages: moreMessages, lastVisible: newLastVisible } = await chatService.getMessages(
         currentConversation.id as string,
         20,
-        lastVisible
+        lastVisible,
+        userId // Pass userId for authorization check
       );
       
-      if (moreMessages.length === 0) return false;
+      if (moreMessages.length === 0) {
+        console.log('No more messages to load');
+        return false;
+      }
       
+      console.log(`Loaded ${moreMessages.length} more messages`);
       setMessages(prevMessages => [...prevMessages, ...moreMessages]);
       setLastVisible(newLastVisible);
       

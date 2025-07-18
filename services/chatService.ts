@@ -37,6 +37,8 @@ export interface ChatConversation {
     type: ParticipantType;
     avatar?: string;
   }[];
+  // Array of participant IDs for easier querying
+  participantIds?: string[];
   lastMessage?: {
     text: string;
     createdAt: Date | FirebaseFirestoreTypes.Timestamp;
@@ -64,6 +66,9 @@ class ChatService {
         return [];
       }
       
+      console.log(`Fetching conversations for user: ${userId}`);
+      
+      // Use 'participantIds' array-contains query for efficiency
       const conversationsRef = firestore()
         .collection('conversations')
         .where('participantIds', 'array-contains', userId);
@@ -71,13 +76,23 @@ class ChatService {
       const snapshot = await conversationsRef.get();
       
       if (snapshot.empty) {
+        console.log('No conversations found for user');
         return [];
       }
       
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ChatConversation[];
+      console.log(`Found ${snapshot.docs.length} conversations for user`);
+      
+      // Filter conversations to ensure they contain the current user as a participant
+      return snapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }) as ChatConversation)
+        .filter(conversation => {
+          // Double-check that this conversation truly includes the current user
+          return conversation.participantIds?.includes(userId) || 
+                 conversation.participants?.some(p => p.id === userId);
+        });
       
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -85,13 +100,15 @@ class ChatService {
     }
   }
   
-  // Get a single conversation by ID
-  async getConversationById(conversationId: string): Promise<ChatConversation | null> {
+  // Get a single conversation by ID - with strict user authorization check
+  async getConversationById(conversationId: string, userId?: string): Promise<ChatConversation | null> {
     try {
       if (!conversationId || !isFirebaseInitialized()) {
         console.log('Firebase not initialized or no conversationId provided');
         return null;
       }
+      
+      console.log(`Fetching conversation: ${conversationId}`);
       
       const conversationDoc = await firestore()
         .collection('conversations')
@@ -99,7 +116,17 @@ class ChatService {
         .get();
       
       if (!conversationDoc.exists) {
+        console.log('Conversation not found');
         return null;
+      }
+      
+      // If userId is provided, verify this user is a participant
+      if (userId) {
+        const data = conversationDoc.data();
+        if (!data || !data.participantIds || !data.participantIds.includes(userId)) {
+          console.warn(`Access denied: User ${userId} is not a participant in conversation ${conversationId}`);
+          return null; // User is not authorized to view this conversation
+        }
       }
       
       return {
@@ -323,13 +350,37 @@ class ChatService {
     }
   }
   
-  // Get messages for a conversation with pagination
+  // Get messages for a conversation with pagination - with user authorization check
   async getMessages(
     conversationId: string,
     limit: number = 20,
-    startAfter?: FirebaseFirestoreTypes.DocumentSnapshot
+    startAfter?: FirebaseFirestoreTypes.DocumentSnapshot,
+    userId?: string
   ): Promise<{ messages: Message[]; lastVisible: FirebaseFirestoreTypes.DocumentSnapshot | null }> {
     try {
+      // First verify the user is a participant in this conversation if userId is provided
+      if (userId) {
+        const conversationDoc = await firestore()
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+          
+        if (!conversationDoc.exists) {
+          console.log('Conversation not found when getting messages');
+          return { messages: [], lastVisible: null };
+        }
+        
+        // Check if this user is a participant
+        const data = conversationDoc.data();
+        if (!data || !data.participantIds || !data.participantIds.includes(userId)) {
+          console.warn(`Access denied: User ${userId} is not a participant in conversation ${conversationId}`);
+          return { messages: [], lastVisible: null }; // User is not authorized
+        }
+      }
+      
+      // User is authorized or no userId check was requested, proceed with query
+      console.log(`Fetching messages for conversation: ${conversationId}`);
+      
       let query = firestore()
         .collection('conversations')
         .doc(conversationId)
@@ -344,8 +395,11 @@ class ChatService {
       const snapshot = await query.get();
       
       if (snapshot.empty) {
+        console.log('No messages found for conversation');
         return { messages: [], lastVisible: null };
       }
+      
+      console.log(`Found ${snapshot.docs.length} messages`);
       
       const messages = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -416,11 +470,45 @@ class ChatService {
     }
   }
   
-  // Subscribe to new messages in a conversation
-  subscribeToMessages(
+  // Subscribe to new messages in a conversation - with user authorization check
+  async subscribeToMessages(
     conversationId: string,
-    callback: (messages: Message[]) => void
-  ): () => void {
+    callback: (messages: Message[]) => void,
+    userId?: string
+  ): Promise<() => void> {
+    // First verify the user is a participant if userId is provided
+    if (userId) {
+      try {
+        const conversationDoc = await firestore()
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+          
+        if (!conversationDoc.exists) {
+          console.log('Conversation not found when subscribing to messages');
+          callback([]);
+          return () => {}; // Return a no-op cleanup function
+        }
+        
+        // Check if this user is a participant
+        const data = conversationDoc.data();
+        if (!data || !data.participantIds || !data.participantIds.includes(userId)) {
+          console.warn(`Access denied: User ${userId} is not a participant in conversation ${conversationId}`);
+          callback([]);
+          return () => {}; // Return a no-op cleanup function
+        }
+        
+        console.log(`User ${userId} authorized to subscribe to conversation ${conversationId}`);
+      } catch (error) {
+        console.error('Error checking conversation authorization:', error);
+        callback([]);
+        return () => {}; // Return a no-op cleanup function
+      }
+    }
+    
+    console.log(`Subscribing to messages for conversation: ${conversationId}`);
+    
+    // User is authorized or no userId check was requested, proceed with subscription
     const unsubscribe = firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -435,6 +523,9 @@ class ChatService {
               ...doc.data()
             })) as Message[];
             callback(messages);
+            console.log(`Received ${messages.length} messages in subscription update`);
+          } else {
+            console.log('No messages in subscription update');
           }
         },
         error => {
@@ -445,11 +536,45 @@ class ChatService {
     return unsubscribe;
   }
   
-  // Subscribe to conversation updates
-  subscribeToConversation(
+  // Subscribe to conversation updates - with user authorization check
+  async subscribeToConversation(
     conversationId: string,
-    callback: (conversation: ChatConversation | null) => void
-  ): () => void {
+    callback: (conversation: ChatConversation | null) => void,
+    userId?: string
+  ): Promise<() => void> {
+    // First verify the user is a participant if userId is provided
+    if (userId) {
+      try {
+        const conversationDoc = await firestore()
+          .collection('conversations')
+          .doc(conversationId)
+          .get();
+          
+        if (!conversationDoc.exists) {
+          console.log('Conversation not found when subscribing');
+          callback(null);
+          return () => {}; // Return a no-op cleanup function
+        }
+        
+        // Check if this user is a participant
+        const data = conversationDoc.data();
+        if (!data || !data.participantIds || !data.participantIds.includes(userId)) {
+          console.warn(`Access denied: User ${userId} is not a participant in conversation ${conversationId}`);
+          callback(null);
+          return () => {}; // Return a no-op cleanup function
+        }
+        
+        console.log(`User ${userId} authorized to subscribe to conversation ${conversationId}`);
+      } catch (error) {
+        console.error('Error checking conversation authorization:', error);
+        callback(null);
+        return () => {}; // Return a no-op cleanup function
+      }
+    }
+    
+    console.log(`Subscribing to conversation updates: ${conversationId}`);
+    
+    // User is authorized or no userId check was requested, proceed with subscription
     const unsubscribe = firestore()
       .collection('conversations')
       .doc(conversationId)
@@ -460,6 +585,21 @@ class ChatService {
               id: snapshot.id,
               ...snapshot.data()
             } as ChatConversation;
+            
+            // Double-check authorization in the subscription callback as well
+            if (userId) {
+              // Check if user is in participants array
+              const userIsParticipant = conversation.participants?.some(p => p.id === userId);
+              // Also check participantIds if it exists (it's in the data but not in our type)
+              const userIsInParticipantIds = (conversation as any).participantIds?.includes(userId);
+              
+              if (!userIsParticipant && !userIsInParticipantIds) {
+                console.warn(`Subscription access denied: User ${userId} is not a participant in conversation ${conversationId}`);
+                callback(null);
+                return;
+              }
+            }
+            
             callback(conversation);
           } else {
             callback(null);
@@ -493,10 +633,16 @@ class ChatService {
       .onSnapshot(
         snapshot => {
           if (!snapshot.empty) {
-            const conversations = snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            })) as ChatConversation[];
+            const conversations = snapshot.docs
+              .map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }) as ChatConversation)
+              // Extra safety filter to ensure conversations belong to this user
+              .filter(conversation => {
+                return conversation.participantIds?.includes(userId) || 
+                      conversation.participants?.some(p => p.id === userId);
+              });
             callback(conversations);
           } else {
             callback([]);

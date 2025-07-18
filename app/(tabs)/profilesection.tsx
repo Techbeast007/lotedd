@@ -448,8 +448,24 @@ export default function ProfileSection() {
   };
 
   const handleMenuAction = (action: string) => {
-    // Implement menu actions
-    Alert.alert(action, `${action} feature will be available soon`);
+    // Implement menu actions based on the action type
+    switch(action) {
+      case 'Help & Support':
+        if (currentUser === 'seller') {
+          router.push('/settings/seller/help-support'); // Navigate to seller help page
+        } else {
+          router.push('/settings/help'); // Navigate to buyer help page
+        }
+        break;
+      case 'Privacy & Security':
+        Alert.alert("Privacy & Security", "Privacy & security settings will be available soon");
+        break;
+      case 'Settings':
+        Alert.alert("Settings", "General settings will be available soon");
+        break;
+      default:
+        Alert.alert(action, `${action} feature will be available soon`);
+    }
   };
 
   return (
@@ -570,19 +586,34 @@ export default function ProfileSection() {
             />
             <Divider className="bg-gray-100" />
             
-            <ProfileInfoItem 
-              icon={<Phone size={20} color="#3B82F6" />} 
-              title="Phone" 
-              value={userPhone}
-              onPress={() => openEditModal("Phone", userPhone, <Phone size={20} color="#3B82F6" />)}
-            />
+            <HStack className="w-full items-center py-3">
+              <Box className="h-10 w-10 rounded-full bg-blue-50 items-center justify-center mr-3">
+                <Phone size={20} color="#3B82F6" />
+              </Box>
+              <VStack className="flex-1">
+                <Text className="text-sm font-medium text-gray-500">Phone</Text>
+                <Text className="text-base font-semibold">{userPhone}</Text>
+              </VStack>
+              {/* Phone number editing disabled */}
+              <Box 
+                className="h-8 w-8 rounded-full bg-gray-100 items-center justify-center opacity-50"
+              >
+                <Text className="text-gray-500">🔒</Text>
+              </Box>
+            </HStack>
             <Divider className="bg-gray-100" />
             
             <ProfileInfoItem 
               icon={<MapPin size={20} color="#3B82F6" />} 
-              title="Address" 
-              value={userAddress}
-              onPress={() => openEditModal("Address", userAddress, <MapPin size={20} color="#3B82F6" />)}
+              title="Addresses" 
+              value={userAddress || "Manage your addresses"}
+              onPress={() => {
+                if (currentUser === 'seller') {
+                  router.push('/settings/seller/addresses'); // Navigate to seller addresses
+                } else {
+                  router.push('/settings/addresses'); // Navigate to buyer addresses
+                }
+              }}
             />
             
             {currentUser === 'seller' && (
@@ -626,16 +657,7 @@ export default function ProfileSection() {
                 onPress={() => handleMenuAction("Help & Support")}
               />
               
-              {currentUser === 'seller' && (
-                <>
-                  <Divider className="bg-gray-100 ml-16" />
-                  <MenuItem 
-                    icon={<Settings size={20} color="#3B82F6" />}
-                    label="Seller Settings" 
-                    onPress={() => handleMenuAction("Seller Settings")}
-                  />
-                </>
-              )}
+              {/* Seller Settings removed */}
               
               <Divider className="bg-gray-100 ml-16" />
               <MenuItem 

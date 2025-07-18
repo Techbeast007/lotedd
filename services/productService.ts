@@ -43,11 +43,19 @@ export interface Product {
   duplicated?: boolean;
   originalDocId?: string;
   copyIndex?: number;
+  mrp?: number; // Maximum Retail Price
+  specifications?: Record<string, string>; // Product specifications
+  wishlistedBy?: string[]; // List of user IDs who have wishlisted this product
   
   // New fields for seller product management
   manufacturingCost?: number; // Cost per piece to manufacture
   sellingPricePerPiece?: number; // Selling price per piece
   wholeStockPrice?: number; // Optional price for the entire stock
+  
+  // New fields added for enhanced product details
+  moq?: number; // Minimum Order Quantity
+  condition?: 'new' | 'used' | 'refurbished'; // Product condition
+  damagePercentage?: number; // Percentage of damage (for used/refurbished products)
 }
 
 /**

@@ -6,13 +6,13 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, MessageCircle, Package, ShoppingCart } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    FlatList,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -172,7 +172,14 @@ export default function MessagesScreen() {
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {item.lastMessage?.text || 'No messages yet'}
+              {/* Always show contextual information for conversations */}
+              {item.lastMessage?.text || 
+                (item.relatedTo?.type === 'product' 
+                  ? `About product: ${item.relatedTo.name || ''}`
+                  : item.relatedTo?.type === 'order'
+                    ? `About order: ${item.relatedTo.name || ''}`
+                    : 'Start a conversation')
+              }
             </Text>
             
             {/* Show unread badge if there are unread messages */}

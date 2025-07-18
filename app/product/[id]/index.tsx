@@ -1,1319 +1,1169 @@
-// Redesigned product detail view with Gluestack UI and Tailwind
-
-import { Button, ButtonText } from '@/components/ui/button';
-import { Center } from '@/components/ui/center';
-import { FormControl } from '@/components/ui/form-control';
+import { Button, ButtonIcon, ButtonSpinner, ButtonText } from '@/components/ui/button';
 import { HStack } from '@/components/ui/hstack';
-import { Modal, ModalBackdrop, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader } from '@/components/ui/modal';
-import { Pressable } from '@/components/ui/pressable';
+import { Image } from '@/components/ui/image';
 import { ScrollView } from '@/components/ui/scroll-view';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
 import { Toast, ToastDescription, ToastTitle, useToast } from '@/components/ui/toast';
 import { VStack } from '@/components/ui/vstack';
 import { getCurrentUser } from '@/services/authService';
-import { incrementProductViewCount } from '@/services/biddingService';
-import { useCart } from '@/services/context/CartContext';
-import { getRelatedProducts, Product } from '@/services/productService';
-import { addToWishlist, getWishlistStatus, removeFromWishlist } from '@/services/wishlistService';
-import { addDoc, collection, doc, getDoc, getDocs, getFirestore, orderBy, query, where } from '@react-native-firebase/firestore';
+import { addToCart } from '@/services/cartService';
+import { ParticipantType } from '@/services/chatService';
+import { useChatContext } from '@/services/context/ChatContext';
+import { Product, getProductById, getRelatedProducts } from '@/services/productService';
+import { getReviews, submitReview } from '@/services/reviewService';
+import { addToWishlist, removeFromWishlist } from '@/services/wishlistService';
+// Video import for native module
+import { ResizeMode, Video } from 'expo-av';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, Heart, Home, Info, MessageCircle, Package, Share2, Shirt, ShoppingBag, Smartphone, Star, TagIcon, Utensils } from 'lucide-react-native';
-import React, { useCallback, useEffect, useState } from 'react';
+import * as ExpoSharing from 'expo-sharing';
+import { ChevronLeft, Heart, MessageSquare, Share as ShareIcon, Star, Truck } from 'lucide-react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
-  Image as RNImage,
+  Modal,
+  Pressable,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Review-related functions
-const getProductReviews = async (productId: string): Promise<Review[]> => {
-  try {
-    const db = getFirestore();
-    const reviewsRef = collection(db, 'products', productId, 'reviews');
-    const reviewsQuery = query(reviewsRef, orderBy('createdAt', 'desc'));
-    const reviewsSnapshot = await getDocs(reviewsQuery);
-    
-    return reviewsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      liked: false // Default value
-    }) as Review);
-  } catch (error) {
-    console.error('Error getting product reviews:', error);
-    return [];
-  }
-};
-
-const addReview = async (reviewData: Omit<Review, 'id' | 'liked' | 'likes'>): Promise<void> => {
-  try {
-    const db = getFirestore();
-    const reviewsRef = collection(db, 'products', reviewData.productId, 'reviews');
-    
-    // Add likes field to the review data
-    const reviewWithLikes = {
-      ...reviewData,
-      likes: 0
-    };
-    
-    await addDoc(reviewsRef, reviewWithLikes);
-  } catch (error) {
-    console.error('Error adding review:', error);
-    throw error;
-  }
-};
-
-interface ProductDetail {
-  id: string;
-  name: string;
-  description: string;
-  shortDescription?: string;
-  brand?: string;
-  basePrice: number;
-  discountPrice?: number;
-  stockQuantity: number;
-  images: string[];
-  featuredImage?: string;
-  categories: string[];
-  category?: string;         // Added to match possible field in Firestore
-  categoryId?: string | number; // Added to match possible field in Firestore
-  categoryName?: string;     // Added to match possible field in Firestore
-  attributes?: Record<string, string>;
-  rating?: number;
-  reviewCount?: number;
-  viewCount?: number;
-  createdAt?: any;
-  updatedAt?: any;
-}
-
-interface Review {
-  id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  productId: string;
-  rating: number;
-  comment: string;
-  createdAt: any;
-  likes: number;
-  liked?: boolean;
-}
+const { width } = Dimensions.get('window');
 
 export default function ProductDetailScreen() {
-  const params = useLocalSearchParams();
-  const { id: productId } = params;
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const toast = useToast();
-  const insets = useSafeAreaInsets();
-  const { addItem } = useCart();
-  const currentUser = getCurrentUser();
-  const [product, setProduct] = useState<ProductDetail | null>(null);
-  const [relatedProducts, setRelatedProducts] = useState<ProductDetail[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [isAddingToCart, setIsAddingToCart] = useState(false);
-  const [reviewsData, setReviewsData] = useState<Review[]>([]);
-  const [isInWishlist, setIsInWishlist] = useState(false);
-  const [isWishlistLoading, setIsWishlistLoading] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [inWishlist, setInWishlist] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [userReview, setUserReview] = useState('');
+  const [userRating, setUserRating] = useState(0);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+  const scrollViewRef = useRef<FlatList>(null);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const { getOrCreateConversation } = useChatContext();
   
-  // Review form state
-  const [isReviewModalVisible, setIsReviewModalVisible] = useState(false);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewComment, setReviewComment] = useState('');
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  
-  // Check if product is in wishlist
-  const checkWishlistStatus = useCallback(async (pid: string) => {
-    if (!currentUser) return;
+  const loadData = useCallback(async () => {
+    if (!id) return;
     
     try {
-      setIsWishlistLoading(true);
-      const status = await getWishlistStatus(currentUser.uid, pid);
-      setIsInWishlist(status);
-    } catch (err) {
-      console.error('Error checking wishlist status:', err);
-    } finally {
-      setIsWishlistLoading(false);
-    }
-  }, [currentUser]);
-
-  // Fetch product data
-  useEffect(() => {
-    const fetchProductData = async () => {
-      if (!productId) {
-        setError('Product ID not provided');
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const db = getFirestore();
-        const productRef = doc(db, 'products', productId as string);
-        const productDoc = await getDoc(productRef);
-
-        if (productDoc.exists()) {
-          const productData = { 
-            id: productDoc.id, 
-            ...productDoc.data(),
-            // Ensure essential properties exist to prevent undefined errors
-            categories: productDoc.data()?.categories || [],
-            images: productDoc.data()?.images || [],
-            stockQuantity: productDoc.data()?.stockQuantity || 0
-          } as ProductDetail;
-          
-          setProduct(productData);
-          
-          // Increment view count
-          incrementProductViewCount(productId as string);
-          
-          // Get related products based on first category or other properties
-          let categoryToUse = '';
-          
-          // Try multiple approaches to find a valid category
-          if (productData.categories && productData.categories.length > 0) {
-            categoryToUse = productData.categories[0];
-          } else if (productData.category) {
-            categoryToUse = productData.category;
-          } else if (productData.categoryId) {
-            categoryToUse = String(productData.categoryId);
-          }
-          
-          console.log('Looking for related products with category:', categoryToUse);
-            
-          let related: Product[] = [];
-          try {
-            // Try with category first
-            related = await getRelatedProducts(categoryToUse, productId as string, 6) || [];
-            
-            // If no results, try with brand as fallback
-            if (related.length === 0 && productData.brand) {
-              console.log('No products found by category, trying with brand:', productData.brand);
-              // In a real app, you'd have a getProductsByBrand function
-              // For now, let's fetch some random products as fallback
-              const firestore = getFirestore();
-              const productsRef = collection(firestore, 'products');
-              const querySnapshot = await getDocs(query(productsRef, where('brand', '==', productData.brand)));
-              
-              related = querySnapshot.docs
-                .filter(doc => doc.id !== productId)
-                .map(doc => ({ id: doc.id, ...doc.data() } as Product));
-            }
-          } catch (relatedError) {
-            console.error('Error fetching related products:', relatedError);
-            related = []; // Ensure related is always an array
-          }
-          
-          // Convert Product[] to ProductDetail[] with proper null checks and debugging
-          console.log('Related products from API:', related.length, related.map(p => p.id));
-          
-          // If no related products found, try to get any random products as a fallback
-          if (related.length === 0) {
-            console.log('No related products found. Getting fallback products...');
-            try {
-              const firestore = getFirestore();
-              const productsRef = collection(firestore, 'products');
-              // Get a small batch of products without filtering (we'll filter the current product out later)
-              const fallbackSnapshot = await getDocs(query(productsRef, 
-                // Limit to 20 products to filter from
-                // We can't directly query for id != productId in Firestore
-              ));
-              
-              const fallbackProducts = fallbackSnapshot.docs
-                .filter(doc => doc.id !== productId)
-                .map(doc => ({ id: doc.id, ...doc.data() } as Product));
-              
-              // Take up to 6 random products
-              related = fallbackProducts
-                .sort(() => 0.5 - Math.random())
-                .slice(0, 6);
-                
-              console.log('Fallback products found:', related.length);
-            } catch (fallbackError) {
-              console.error('Error getting fallback products:', fallbackError);
-            }
-          }
-          
-          const relatedAsProductDetail = related
-            .filter(p => p !== null && p !== undefined)
-            .map(p => {
-              const productDetail = {
-                ...p,
-                id: p.id || '',
-                name: p.name || 'Product',
-                description: p.description || '',
-                basePrice: p.basePrice || 0,
-                categories: p.category ? [p.category] : [],
-                images: p.images || [],
-                stockQuantity: p.stockQuantity || 0,
-              } as ProductDetail;
-              
-              return productDetail;
-            });
-          
-          console.log('Related products mapped:', relatedAsProductDetail.length);
-          setRelatedProducts(relatedAsProductDetail);
-          
-          // Fetch reviews
-          fetchReviews(productId as string);
-          
-          // Check wishlist status
-          checkWishlistStatus(productId as string);
-        } else {
-          setError('Product not found');
+      setLoading(true);
+      
+      // Load product details
+      const productData = await getProductById(id as string);
+      if (productData) {
+        setProduct(productData);
+        
+        // Load related products based on category
+        if (productData.category) {
+          const related = await getRelatedProducts(productData.category, id as string, 6);
+          setRelatedProducts(related);
         }
-      } catch (err) {
-        console.error('Error fetching product:', err);
-        setError('Failed to load product details');
-      } finally {
-        setIsLoading(false);
+        
+        // Load reviews
+        const reviewsData = await getReviews(id as string);
+        setReviews(reviewsData || []);
+        
+        // Check if product is in wishlist
+        const user = getCurrentUser();
+        if (user) {
+          const isInWishlist = productData.wishlistedBy?.includes(user.uid);
+          setInWishlist(!!isInWishlist);
+        }
       }
-    };
-
-    fetchProductData();
-  }, [productId, checkWishlistStatus]);
-  
-  // Fetch product reviews
-  const fetchReviews = async (pid: string) => {
-    try {
-      const reviews = await getProductReviews(pid);
-      setReviewsData(reviews);
-    } catch (err) {
-      console.error('Error fetching reviews:', err);
+    } catch (error) {
+      console.error('Error loading product data:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <VStack space="xs">
+              <ToastTitle>Error</ToastTitle>
+              <ToastDescription>Failed to load product details</ToastDescription>
+            </VStack>
+          </Toast>
+        )
+      });
+    } finally {
+      setLoading(false);
     }
+  }, [id, toast]);
+  
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+  
+  // Handle media scroll
+  const onMediaScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / width);
+    setSelectedMediaIndex(index);
   };
   
-  // Handle adding to wishlist
-  const handleToggleWishlist = async () => {
-    if (!currentUser) {
+  // Handle wishlist toggle
+  const handleWishlistToggle = async () => {
+    if (!product) return;
+    
+    const user = getCurrentUser();
+    if (!user) {
       router.push('/(auth)');
       return;
     }
     
     try {
-      setIsWishlistLoading(true);
-      
-      if (isInWishlist) {
-        await removeFromWishlist(currentUser.uid, productId as string);
-        setIsInWishlist(false);
-        
+      if (inWishlist) {
+        await removeFromWishlist(user.uid, product.id as string);
+        setInWishlist(false);
         toast.show({
           render: () => (
             <Toast action="success" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Removed from Wishlist</ToastTitle>
-                <ToastDescription>Product removed from your wishlist</ToastDescription>
-              </VStack>
+              <ToastDescription>Removed from wishlist</ToastDescription>
             </Toast>
           )
         });
       } else {
-        if (!product) return;
-        
-        await addToWishlist(currentUser.uid, {
-          productId: productId as string,
+        await addToWishlist(user.uid, {
+          productId: product.id as string,
           name: product.name,
           basePrice: product.basePrice,
           discountPrice: product.discountPrice,
-          featuredImage: product.featuredImage || (product.images?.length > 0 ? product.images[0] : ''),
-          brand: product.brand || '',
-          addedAt: new Date()
+          featuredImage: product.featuredImage || (product.images && product.images.length > 0 ? product.images[0] : ''),
+          brand: product.brand,
+          addedAt: new Date() // Will be overwritten by server timestamp
         });
-        
-        setIsInWishlist(true);
-        
+        setInWishlist(true);
         toast.show({
           render: () => (
             <Toast action="success" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Added to Wishlist</ToastTitle>
-                <ToastDescription>Product saved to your wishlist</ToastDescription>
-              </VStack>
+              <ToastDescription>Added to wishlist</ToastDescription>
             </Toast>
           )
         });
       }
-    } catch (err) {
-      console.error('Error toggling wishlist:', err);
-      
+    } catch (error) {
+      console.error('Error toggling wishlist:', error);
       toast.show({
         render: () => (
           <Toast action="error" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Error</ToastTitle>
-              <ToastDescription>Failed to update wishlist</ToastDescription>
-            </VStack>
+            <ToastDescription>Failed to update wishlist</ToastDescription>
           </Toast>
         )
       });
-    } finally {
-      setIsWishlistLoading(false);
     }
   };
   
-  // Handle adding to cart
+  // Handle add to cart
   const handleAddToCart = async () => {
     if (!product) return;
     
+    const user = getCurrentUser();
+    if (!user) {
+      router.push('/(auth)');
+      return;
+    }
+    
     try {
-      setIsAddingToCart(true);
-      
-      // Create a product object that matches the expected structure
-      const productForCart: Product = {
-        id: product.id,
-        name: product.name,
-        basePrice: product.basePrice,
-        discountPrice: product.discountPrice,
-        stockQuantity: product.stockQuantity,
-        description: product.description,
-        featuredImage: product.featuredImage || (product.images && product.images.length > 0 ? product.images[0] : ''),
-        images: product.images
-      };
-      
-      // Add item to cart
-      await addItem(productForCart);
-      
-      // If the product is in the wishlist, remove it
-      if (isInWishlist && currentUser && product.id) {
-        await removeFromWishlist(currentUser.uid, product.id);
-        setIsInWishlist(false);
-        
-        toast.show({
-          render: () => (
-            <Toast action="success" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Added to Cart</ToastTitle>
-                <ToastDescription>Product moved from wishlist to cart</ToastDescription>
-              </VStack>
-            </Toast>
-          )
-        });
-      } else {
-        toast.show({
-          render: () => (
-            <Toast action="success" variant="solid">
-              <VStack space="xs">
-                <ToastTitle>Added to Cart</ToastTitle>
-                <ToastDescription>Product added to your cart</ToastDescription>
-              </VStack>
-            </Toast>
-          )
-        });
-      }
-    } catch (err) {
-      console.error('Error adding to cart:', err);
-      
+      setAddingToCart(true);
+      // Pass the full product object to addToCart
+      await addToCart(product);
+      toast.show({
+        render: () => (
+          <Toast action="success" variant="solid">
+            <ToastDescription>Added to cart</ToastDescription>
+          </Toast>
+        )
+      });
+    } catch (error) {
+      console.error('Error adding to cart:', error);
       toast.show({
         render: () => (
           <Toast action="error" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Error</ToastTitle>
-              <ToastDescription>Failed to add to cart</ToastDescription>
-            </VStack>
+            <ToastDescription>Failed to add to cart</ToastDescription>
           </Toast>
         )
       });
     } finally {
-      setIsAddingToCart(false);
+      setAddingToCart(false);
     }
   };
   
-  // Submit a review
+  // Handle submit review
   const handleSubmitReview = async () => {
-    if (!currentUser || !product || reviewRating === 0 || !reviewComment.trim()) return;
+    if (!product || userRating === 0) {
+      toast.show({
+        render: () => (
+          <Toast action="warning" variant="solid">
+            <ToastDescription>Please select a rating</ToastDescription>
+          </Toast>
+        )
+      });
+      return;
+    }
+    
+    const user = getCurrentUser();
+    if (!user) {
+      router.push('/(auth)');
+      return;
+    }
     
     try {
-      setIsSubmittingReview(true);
-      
-      await addReview({
-        userId: currentUser.uid,
-        userName: currentUser.displayName || 'Anonymous User',
-        userAvatar: currentUser.photoURL || undefined,
-        productId: product.id,
-        rating: reviewRating,
-        comment: reviewComment.trim(),
-        createdAt: new Date(),
-      });
+      setSubmittingReview(true);
+      await submitReview(product.id as string, userRating, userReview);
       
       // Refresh reviews
-      fetchReviews(product.id);
+      const updatedReviews = await getReviews(product.id as string);
+      setReviews(updatedReviews || []);
       
-      // Reset form
-      setReviewRating(0);
-      setReviewComment('');
-      
-      // Close modal
-      setIsReviewModalVisible(false);
+      // Reset form and close modal
+      setUserRating(0);
+      setUserReview('');
+      setReviewModalVisible(false);
       
       toast.show({
         render: () => (
           <Toast action="success" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Review Submitted</ToastTitle>
-              <ToastDescription>Thank you for your feedback!</ToastDescription>
-            </VStack>
+            <ToastDescription>Review submitted successfully</ToastDescription>
           </Toast>
         )
       });
-    } catch (err) {
-      console.error('Error submitting review:', err);
-      
+    } catch (error) {
+      console.error('Error submitting review:', error);
       toast.show({
         render: () => (
           <Toast action="error" variant="solid">
-            <VStack space="xs">
-              <ToastTitle>Error</ToastTitle>
-              <ToastDescription>Failed to submit review</ToastDescription>
-            </VStack>
+            <ToastDescription>Failed to submit review</ToastDescription>
           </Toast>
         )
       });
     } finally {
-      setIsSubmittingReview(false);
+      setSubmittingReview(false);
     }
   };
-
-  // Loading state
-  if (isLoading) {
+  
+  // Handle contact seller
+  const handleContactSeller = async () => {
+    if (!product || !product.sellerId) return;
+    
+    const user = getCurrentUser();
+    if (!user) {
+      router.push('/(auth)');
+      return;
+    }
+    
+    try {
+      // Get seller info to create a conversation
+      const otherParticipant = {
+        id: product.sellerId || '',
+        name: 'Seller', // Default name since we don't have seller name in the product
+        type: ParticipantType.SELLER,
+      };
+      
+      // Create a conversation related to this product
+      const conversationId = await getOrCreateConversation(
+        otherParticipant,
+        {
+          type: 'product',
+          id: product.id,
+          name: product.name
+        }
+      );
+      
+      if (conversationId) {
+        router.push(`/messages/${conversationId}`);
+      }
+    } catch (error) {
+      console.error('Error starting conversation:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <ToastDescription>Failed to contact seller</ToastDescription>
+          </Toast>
+        )
+      });
+    }
+  };
+  
+  // Share product using ExpoSharing
+  const handleShareProduct = async () => {
+    if (!product) return;
+    
+    try {
+      // Create share message
+      const shareMessage = `Check out ${product.name} on Lotedd!\n\nPrice: ₹${product.basePrice}`;
+      
+      // Check if sharing is available
+      const isAvailable = await ExpoSharing.isAvailableAsync();
+      if (isAvailable) {
+        // If image is available, share with image
+        if (product.featuredImage) {
+          await ExpoSharing.shareAsync(product.featuredImage, {
+            dialogTitle: `Share ${product.name}`,
+            mimeType: 'image/jpeg',
+            UTI: 'public.jpeg',
+          });
+        } else {
+          // Otherwise just share text
+          await ExpoSharing.shareAsync(shareMessage, {
+            dialogTitle: `Share ${product.name}`,
+            mimeType: 'text/plain',
+          });
+        }
+      } else {
+        toast.show({
+          render: () => (
+            <Toast action="info" variant="solid">
+              <ToastDescription>Sharing is not available on this device</ToastDescription>
+            </Toast>
+          )
+        });
+      }
+    } catch (error) {
+      console.log('Error sharing product:', error);
+      toast.show({
+        render: () => (
+          <Toast action="error" variant="solid">
+            <ToastDescription>Failed to share product</ToastDescription>
+          </Toast>
+        )
+      });
+    }
+  };
+  
+  // Render loading state
+  if (loading) {
     return (
-      <Center className="flex-1 bg-white">
-        <Spinner size="large" />
-        <Text className="mt-2 text-gray-700">Loading product details...</Text>
-      </Center>
+      <SafeAreaView style={styles.loadingContainer}>
+        <Spinner size="large" color="#4F46E5" />
+        <Text style={styles.loadingText}>Loading product details...</Text>
+      </SafeAreaView>
     );
   }
   
-  // Error state
-  if (error || !product) {
+  // Render error state if product not found
+  if (!product) {
     return (
-      <Center className="flex-1 bg-white px-4">
-        <View className="mb-4">
-          <Info size={60} color="#9CA3AF" />
-        </View>
-        <Text className="text-xl font-bold mb-2 text-center">Something went wrong</Text>
-        <Text className="mb-6 text-center text-gray-500">{error || 'Product not found'}</Text>
-        <Button onPress={() => router.back()} action="primary">
+      <SafeAreaView style={styles.errorContainer}>
+        <Text style={styles.errorText}>Product not found</Text>
+        <Button onPress={() => router.back()}>
           <ButtonText>Go Back</ButtonText>
         </Button>
-      </Center>
+      </SafeAreaView>
     );
   }
   
-  // Calculate discount percentage
-  const discounted = product.discountPrice != null && product.discountPrice < product.basePrice;
-  const discountPercentage = discounted && product.discountPrice != null ? 
-    Math.round(((product.basePrice - product.discountPrice) / product.basePrice) * 100) : 0;
-    
-  // Format price with thousand separators
-  const formatPrice = (price: number) => {
-    return `₹${price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-  };
+  // Prepare media items (both images and videos)
+  const mediaItems = [
+    ...(product.images || []).map(image => ({ type: 'image', url: image })),
+    // Including videos but display will be handled differently due to native module issues
+    ...(product.videos || []).map(video => ({ type: 'video', url: video }))
+  ];
   
-  // Prepare all images for carousel
-  const allProductImages = (() => {
-    let images: string[] = [];
-    if (product.featuredImage && product.featuredImage.trim() && (!product.images || !product.images.includes(product.featuredImage))) {
-      images.push(product.featuredImage);
-    }
-    if (product.images && product.images.length > 0) {
-      images = [...images, ...product.images.filter(Boolean)];
-    }
-    // Remove duplicates
-    images = Array.from(new Set(images)).filter(Boolean);
-    console.log('Final product images:', images);
-    return images.length > 0 ? images : ['https://via.placeholder.com/800x800?text=No+Image'];
-  })();
-
-  // Utility function to get appropriate icon based on category or brand
-  const getCategoryIcon = (item: ProductDetail) => {
-    // Get category or brand to determine icon
-    const category = item.categories?.[0]?.toLowerCase() || 
-                    item.category?.toLowerCase() || 
-                    item.categoryName?.toLowerCase() || 
-                    item.brand?.toLowerCase() || '';
+  // Calculate average rating
+  const avgRating = reviews.length > 0 
+    ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
+    : 0;
     
-    // Return appropriate icon based on category/brand keywords
-    if (category.includes('apparel') || category.includes('fashion') || 
-        category.includes('cloth') || category.includes('wear')) {
-      return <Shirt size={40} color="#FFFFFF" />;
-    } else if (category.includes('electron') || category.includes('tech') || 
-              category.includes('phone') || category.includes('gadget')) {
-      return <Smartphone size={40} color="#FFFFFF" />;
-    } else if (category.includes('home') || category.includes('furniture') || 
-              category.includes('decor') || category.includes('indoor')) {
-      return <Home size={40} color="#FFFFFF" />;
-    } else if (category.includes('food') || category.includes('beverage') || 
-              category.includes('grocery') || category.includes('kitchen')) {
-      return <Utensils size={40} color="#FFFFFF" />;
-    } else if (category.includes('industrial') || category.includes('supply') || 
-              category.includes('equipment') || category.includes('tool')) {
-      return <Package size={40} color="#FFFFFF" />;
-    } else {
-      // Default icon
-      return <TagIcon size={40} color="#FFFFFF" />;
-    }
-  };
-
-  // Get background color based on category
-  const getCategoryColor = (item: ProductDetail) => {
-    const category = item.categories?.[0]?.toLowerCase() || 
-                    item.category?.toLowerCase() || 
-                    item.categoryName?.toLowerCase() || 
-                    item.brand?.toLowerCase() || '';
-    
-    if (category.includes('apparel') || category.includes('fashion') || category.includes('cloth')) {
-      return '#3B82F6'; // Blue
-    } else if (category.includes('electron') || category.includes('tech')) {
-      return '#10B981'; // Green
-    } else if (category.includes('home') || category.includes('furniture')) {
-      return '#F59E0B'; // Amber
-    } else if (category.includes('food') || category.includes('beverage')) {
-      return '#EC4899'; // Pink
-    } else if (category.includes('industrial') || category.includes('supply')) {
-      return '#8B5CF6'; // Purple
-    } else {
-      // Generate a consistent color based on the first character of the category/brand
-      const chars = category ? category.charCodeAt(0) : 0;
-      const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#EF4444', '#06B6D4'];
-      return colors[chars % colors.length];
-    }
-  };
-
   return (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB', paddingTop: insets.top }}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header with back button and actions */}
-        <View style={[styles.headerBar, { paddingTop: insets.top }]}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => router.back()}
-          >
-            <ArrowLeft size={20} color="#FFFFFF" />
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <HStack style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ChevronLeft color="#1F2937" size={24} />
+        </TouchableOpacity>
+        
+        <HStack style={styles.headerActions}>
+          <TouchableOpacity onPress={handleShareProduct} style={styles.iconButton}>
+            <ShareIcon color="#1F2937" size={22} />
           </TouchableOpacity>
           
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={handleToggleWishlist}
-              disabled={isWishlistLoading}
-            >
-              {isWishlistLoading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Heart 
-                  size={20} 
-                  color="#FFFFFF"
-                  fill={isInWishlist ? "#FFFFFF" : "transparent"}
-                />
-              )}
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => {
-                Alert.alert('Share', 'Share product functionality will be implemented here.');
-              }}
-            >
-              <Share2 size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Product Images - LARGE CAROUSEL */}
-        <View style={styles.imageCarousel}>
+          <TouchableOpacity onPress={handleWishlistToggle} style={styles.iconButton}>
+            <Heart 
+              color={inWishlist ? "#EF4444" : "#1F2937"} 
+              fill={inWishlist ? "#EF4444" : "none"} 
+              size={22} 
+            />
+          </TouchableOpacity>
+        </HStack>
+      </HStack>
+      
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Media gallery */}
+        <View style={styles.mediaContainer}>
           <FlatList
-            data={allProductImages}
-            keyExtractor={(item, index) => `image-${index}`}
+            ref={scrollViewRef}
+            data={mediaItems.length > 0 ? mediaItems : [{ type: 'image', url: 'https://via.placeholder.com/400x400?text=No+Image' }]}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={(event) => {
-              const slideWidth = Dimensions.get('window').width;
-              const index = Math.floor(event.nativeEvent.contentOffset.x / slideWidth);
-              setSelectedImageIndex(index);
-            }}
+            onScroll={onMediaScroll}
             renderItem={({ item }) => (
-              <View style={styles.imageSlideLarge}>
-                <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
-                  {/* Use React Native Image for better control */}
-                  <RNImage 
-                    source={{ uri: item }}
-                    style={{
-                      width: Dimensions.get('window').width * 0.9, // 90% of screen width
-                      height: 400, // Fixed height for better appearance
-                    }}
+              <View style={styles.mediaItem}>
+                {item.type === 'image' ? (
+                  <Image
+                    source={{ uri: item.url }}
+                    alt={product.name}
+                    style={styles.productImage}
                     resizeMode="contain"
                   />
-                </View>
-                {discounted && (
-                  <View style={styles.discountBadge}>
-                    <Text style={styles.discountText}>{discountPercentage}% OFF</Text>
-                  </View>
+                ) : (
+                  <Video
+                    source={{ uri: item.url }}
+                    style={styles.productImage}
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                    isLooping
+                    shouldPlay={false}
+                  />
                 )}
               </View>
             )}
+            keyExtractor={(item, index) => `media-${index}`}
           />
           
-          {/* Indicator dots */}
-          {allProductImages.length > 1 && (
-            <View style={styles.indicatorContainer}>
-              {allProductImages.map((_, index) => (
+          {/* Pagination dots */}
+          {mediaItems.length > 1 && (
+            <HStack style={styles.pagination}>
+              {mediaItems.map((_, index) => (
                 <View
                   key={`dot-${index}`}
                   style={[
-                    styles.indicator,
-                    index === selectedImageIndex && styles.activeIndicator
+                    styles.paginationDot,
+                    index === selectedMediaIndex && styles.paginationDotActive
                   ]}
                 />
               ))}
-            </View>
+            </HStack>
           )}
         </View>
         
-        {/* Product Information */}
-        <View style={styles.productInfoContainer}>
-          {/* Brand and Rating Row */}
-          <View style={styles.brandRatingRow}>
-            <Text style={styles.brandText}>{product.brand || 'Brand'}</Text>
+        {/* Product info */}
+        <VStack style={styles.productInfo}>
+          {/* Basic details */}
+          <HStack style={styles.productHeader}>
+            <VStack style={styles.productTitleContainer}>
+              <Text style={styles.productName}>{product.name}</Text>
+              <Text style={styles.productBrand}>{product.brand}</Text>
+            </VStack>
             
-            <View style={styles.ratingContainer}>
-              <Star size={16} color="#F59E0B" fill="#F59E0B" />
-              <Text style={styles.ratingText}>
-                {product.rating ? product.rating.toFixed(1) : '0'} 
-                <Text style={styles.reviewCountText}>
-                  ({product.reviewCount || 0} reviews)
-                </Text>
+            <VStack style={styles.productPriceContainer}>
+              <Text style={styles.productPrice}>₹{product.basePrice}</Text>
+              {product.mrp && product.mrp > product.basePrice && (
+                <HStack style={styles.discountContainer}>
+                  <Text style={styles.mrpPrice}>₹{product.mrp}</Text>
+                  <Text style={styles.discountText}>
+                    {Math.round(((product.mrp - product.basePrice) / product.mrp) * 100)}% off
+                  </Text>
+                </HStack>
+              )}
+            </VStack>
+          </HStack>
+          
+          {/* Ratings */}
+          <Pressable onPress={() => setReviewModalVisible(true)}>
+            <HStack style={styles.ratingsContainer}>
+              {avgRating > 0 ? (
+                <>
+                  <HStack style={styles.ratingStars}>
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <Star
+                        key={`star-${index}`}
+                        size={16}
+                        color="#F59E0B"
+                        fill={index < Math.floor(avgRating) ? "#F59E0B" : "none"}
+                        strokeWidth={1.5}
+                      />
+                    ))}
+                  </HStack>
+                  <Text style={styles.ratingText}>
+                    {avgRating.toFixed(1)} • {reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.noRatingsText}>No reviews yet • Be the first to review</Text>
+              )}
+            </HStack>
+          </Pressable>
+          
+          {/* Stock and Delivery */}
+          <HStack style={styles.stockDeliveryContainer}>
+            <HStack style={[styles.tagContainer, product.stockQuantity > 0 ? styles.inStockTag : styles.outOfStockTag]}>
+              <Text style={[styles.tagText, product.stockQuantity > 0 ? styles.inStockText : styles.outOfStockText]}>
+                {product.stockQuantity > 0 ? 'In Stock' : 'Out of Stock'}
               </Text>
-            </View>
-          </View>
-          
-          {/* Product Name */}
-          <Text style={styles.productName}>
-            {product.name}
-          </Text>
-          
-          {/* Price Section */}
-          <View style={styles.priceContainer}>
-            <Text style={styles.currentPrice}>
-              {formatPrice(discounted && product.discountPrice != null ? product.discountPrice : product.basePrice)}
-            </Text>
+            </HStack>
             
-            {discounted && (
-              <Text style={styles.originalPrice}>
-                {formatPrice(product.basePrice)}
-              </Text>
-            )}
-          </View>
-          
-          {/* Stock Status */}
-          <View style={[
-            styles.stockBadge,
-            product.stockQuantity > 0 ? styles.inStockBadge : styles.outOfStockBadge
-          ]}>
-            <Text style={[
-              styles.stockText,
-              product.stockQuantity > 0 ? styles.inStockText : styles.outOfStockText
-            ]}>
-              {product.stockQuantity > 0 ? `In Stock (${product.stockQuantity})` : "Out of Stock"}
-            </Text>
-          </View>
+            <HStack style={styles.deliveryContainer}>
+              <Truck size={14} color="#4F46E5" />
+              <Text style={styles.deliveryText}>Free Delivery</Text>
+            </HStack>
+          </HStack>
           
           {/* Description */}
-          <Text style={styles.sectionTitle}>Description</Text>
-          <Text style={styles.descriptionText}>
-            {product.description}
-          </Text>
+          <VStack style={styles.descriptionContainer}>
+            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.descriptionText}>{product.description}</Text>
+          </VStack>
           
-          <View style={styles.divider} />
-          
-          {/* Reviews Section */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Reviews</Text>
+          {/* Additional Product Details */}
+          <VStack style={styles.additionalDetailsContainer}>
+            <Text style={styles.sectionTitle}>Additional Details</Text>
             
-            <TouchableOpacity
-              style={styles.writeReviewButton}
-              onPress={() => {
-                if (!currentUser) {
-                  router.push('/(auth)');
-                  return;
-                }
-                setIsReviewModalVisible(true);
-              }}
-            >
-              <Text style={styles.writeReviewText}>Write a Review</Text>
-            </TouchableOpacity>
-          </View>
+            {/* MOQ */}
+            {product.moq && product.moq > 0 && (
+              <HStack style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Minimum Order Quantity:</Text>
+                <Text style={styles.detailValue}>{product.moq} units</Text>
+              </HStack>
+            )}
+            
+            {/* Product Condition */}
+            {product.condition && (
+              <HStack style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Condition:</Text>
+                <Text style={styles.detailValue}>
+                  {product.condition.charAt(0).toUpperCase() + product.condition.slice(1)}
+                </Text>
+              </HStack>
+            )}
+            
+            {/* Damage Percentage (only show if condition is not "new") */}
+            {product.condition && product.condition !== 'new' && product.damagePercentage && product.damagePercentage > 0 && (
+              <HStack style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Damage Percentage:</Text>
+                <Text style={styles.detailValue}>{product.damagePercentage}%</Text>
+              </HStack>
+            )}
+            
+            {/* Weight (with kg unit) */}
+            {product.weight && (
+              <HStack style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Weight:</Text>
+                <Text style={styles.detailValue}>{product.weight} kg</Text>
+              </HStack>
+            )}
+            
+            {/* Dimensions (with cm unit) */}
+            {product.dimensions && (
+              <HStack style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Dimensions:</Text>
+                <Text style={styles.detailValue}>{product.dimensions} (cm)</Text>
+              </HStack>
+            )}
+          </VStack>
           
-          {/* Review List */}
-          {reviewsData.length > 0 ? (
-            <View style={styles.reviewsContainer}>
-              {reviewsData.slice(0, 3).map((review) => (
-                <View key={review.id} style={styles.reviewCard}>
-                  <View style={styles.reviewHeader}>
-                    <View style={styles.reviewerInfo}>
-                      <View style={styles.avatarPlaceholder}>
-                        <Text style={styles.avatarText}>
-                          {review.userName.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text style={styles.reviewerName}>{review.userName}</Text>
-                        <View style={styles.starsRow}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <Star 
-                              key={star} 
-                              size={14} 
-                              color="#F59E0B" 
-                              fill={star <= review.rating ? "#F59E0B" : "none"}
-                            />
-                          ))}
-                        </View>
-                      </View>
-                    </View>
-                    <Text style={styles.reviewDate}>
-                      {new Date(review.createdAt.toDate()).toLocaleDateString()}
-                    </Text>
-                  </View>
-                  <Text style={styles.reviewComment}>
-                    {review.comment}
-                  </Text>
-                </View>
+          {/* Specifications */}
+          {product.specifications && Object.keys(product.specifications).length > 0 && (
+            <VStack style={styles.specificationsContainer}>
+              <Text style={styles.sectionTitle}>Specifications</Text>
+              {Object.entries(product.specifications).map(([key, value], index) => (
+                <HStack key={`spec-${index}`} style={styles.specificationRow}>
+                  <Text style={styles.specificationKey}>{key}</Text>
+                  <Text style={styles.specificationValue}>{value}</Text>
+                </HStack>
               ))}
-              
-              {reviewsData.length > 3 && (
-                <TouchableOpacity
-                  style={styles.seeAllButton}
-                  onPress={() => {
-                    // Navigate to all reviews
-                    Alert.alert('View All Reviews', 'Navigate to all reviews page');
-                  }}
-                >
-                  <Text style={styles.seeAllText}>See All Reviews</Text>
-                  <ChevronRight size={16} color="#3B82F6" />
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            <View style={styles.emptyReviewsContainer}>
-              <MessageCircle size={40} color="#CBD5E1" />
-              <Text style={styles.noReviewsText}>No reviews yet</Text>
-              <TouchableOpacity
-                style={styles.beFirstButton}
-                onPress={() => {
-                  if (!currentUser) {
-                    router.push('/(auth)');
-                    return;
-                  }
-                  setIsReviewModalVisible(true);
-                }}
-              >
-                <Text style={styles.beFirstText}>Be the first to review</Text>
-              </TouchableOpacity>
-            </View>
+            </VStack>
           )}
           
-          <View style={styles.divider} />
-          
-          {/* Related Products */}
-          <View style={styles.relatedProductsSection}>
-            <Text style={styles.sectionTitle}>Related Products</Text>
+          {/* Reviews section */}
+          <VStack style={styles.reviewsContainer}>
+            <HStack style={styles.reviewsHeader}>
+              <Text style={styles.sectionTitle}>Reviews ({reviews.length})</Text>
+              <Button 
+                size="xs" 
+                variant="outline" 
+                onPress={() => setReviewModalVisible(true)}
+              >
+                <ButtonText>Write a review</ButtonText>
+              </Button>
+            </HStack>
             
-            {relatedProducts.length > 0 ? (
-              <FlatList
-                data={relatedProducts}
-                keyExtractor={(item, index) => `related-${item.id || index}`}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingLeft: 4, paddingRight: 8, paddingVertical: 8 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.relatedProductCard}
-                    onPress={() => {
-                      router.push(`/product/${item.id}`);
-                    }}
-                  >
-                    <View 
-                      style={{ 
-                        width: '100%', 
-                        height: 140, 
-                        justifyContent: 'center', 
-                        alignItems: 'center',
-                        backgroundColor: getCategoryColor(item)
+            {reviews.length > 0 ? (
+              reviews.slice(0, 3).map((review, index) => (
+                <VStack key={`review-${index}`} style={styles.reviewItem}>
+                  <HStack style={styles.reviewHeader}>
+                    <HStack>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star
+                          key={`review-star-${i}`}
+                          size={14}
+                          color="#F59E0B"
+                          fill={i < review.rating ? "#F59E0B" : "none"}
+                          strokeWidth={1.5}
+                        />
+                      ))}
+                    </HStack>
+                    <Text style={styles.reviewDate}>
+                      {review.createdAt ? new Date(review.createdAt.seconds * 1000).toLocaleDateString() : ''}
+                    </Text>
+                  </HStack>
+                  <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
+                  {review.review && <Text style={styles.reviewText}>{review.review}</Text>}
+                </VStack>
+              ))
+            ) : (
+              <Text style={styles.noReviewsText}>No reviews yet. Be the first to review this product!</Text>
+            )}
+            
+            {reviews.length > 3 && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onPress={() => setReviewModalVisible(true)}
+                style={styles.viewAllReviewsButton}
+              >
+                <ButtonText>View all reviews</ButtonText>
+              </Button>
+            )}
+          </VStack>
+          
+          {/* Related products */}
+          {relatedProducts.length > 0 && (
+            <VStack style={styles.relatedProductsContainer}>
+              <Text style={styles.sectionTitle}>Related Products</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <HStack style={styles.relatedProductsScroll}>
+                  {relatedProducts.map((item, index) => (
+                    <TouchableOpacity 
+                      key={`related-${index}`} 
+                      style={styles.relatedProductItem}
+                      onPress={() => {
+                        // Navigate to the product detail page
+                        router.push(`/product/${item.id}`);
                       }}
                     >
-                      <View style={{
-                        width: 70,
-                        height: 70,
-                        borderRadius: 35,
-                        backgroundColor: 'rgba(255,255,255,0.2)',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}>
-                        {getCategoryIcon(item)}
-                      </View>
-                    </View>
-                    
-                    <View style={styles.relatedProductInfo}>
-                      <Text style={styles.relatedBrandText}>
-                        {item.brand || 'Brand'}
-                      </Text>
-                      <Text style={styles.relatedProductName} numberOfLines={2}>
+                      <Image
+                        source={{ 
+                          uri: item.images && item.images.length > 0 
+                            ? item.images[0] 
+                            : 'https://via.placeholder.com/100x100?text=No+Image'
+                        }}
+                        alt={item.name}
+                        style={styles.relatedProductImage}
+                      />
+                      <Text style={styles.relatedProductName} numberOfLines={1}>
                         {item.name}
                       </Text>
                       <Text style={styles.relatedProductPrice}>
-                        {formatPrice(item.discountPrice || item.basePrice)}
+                        ₹{item.basePrice}
                       </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={() => (
-                  <View style={styles.emptyRelatedContainer}>
-                    <Text style={styles.noRelatedText}>No related products found</Text>
-                  </View>
-                )}
-              />
-            ) : (
-              <View style={styles.emptyRelatedContainer}>
-                <Text style={styles.noRelatedText}>No related products found</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-      
-      {/* Bottom Action Bar */}
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
-        <TouchableOpacity
-          style={[
-            styles.addToCartButton,
-            product.stockQuantity <= 0 && styles.disabledButton
-          ]}
-          onPress={handleAddToCart}
-          disabled={isAddingToCart || product.stockQuantity <= 0}
-        >
-          <ShoppingBag size={20} color="#FFFFFF" />
-          <Text style={styles.addToCartText}>
-            {isAddingToCart ? 'Adding...' : (product.stockQuantity <= 0 ? 'Out of Stock' : 'Add to Cart')}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      {/* Review Modal */}
-      <Modal isOpen={isReviewModalVisible} onClose={() => setIsReviewModalVisible(false)}>
-        <ModalBackdrop />
-        <ModalContent>
-          <ModalHeader>
-            <Text className="text-lg font-bold">Write a Review</Text>
-            <ModalCloseButton>
-              <Text className="text-lg font-bold">×</Text>
-            </ModalCloseButton>
-          </ModalHeader>
-          
-          <ModalBody>
-            <VStack space="md">
-              <FormControl>
-                <Text className="mb-2">Rating</Text>
-                <HStack space="sm">
-                  {[1, 2, 3, 4, 5].map(star => (
-                    <Pressable
-                      key={star}
-                      onPress={() => setReviewRating(star)}
-                    >
-                      <Star
-                        size={32}
-                        color="#F59E0B"
-                        fill={star <= reviewRating ? "#F59E0B" : "none"}
-                      />
-                    </Pressable>
+                    </TouchableOpacity>
                   ))}
                 </HStack>
-              </FormControl>
-              
-              <FormControl>
-                <Text className="mb-2">Review</Text>
-                {/* Using TextArea wrapper */}
-                <View style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 4, padding: 8, height: 120 }}>
-                  <TextInput
-                    multiline
-                    value={reviewComment}
-                    onChangeText={setReviewComment}
-                    placeholder="Write your review here..."
-                    style={{ height: '100%', textAlignVertical: 'top' }}
-                  />
-                </View>
-              </FormControl>
+              </ScrollView>
             </VStack>
-          </ModalBody>
-          
-          <ModalFooter>
-            <HStack space="sm" style={{ width: '100%' }}>
+          )}
+        </VStack>
+      </ScrollView>
+      
+      {/* Bottom action buttons */}
+      <HStack style={styles.bottomActions}>
+        <Button
+          size="lg"
+          variant="outline"
+          style={styles.contactSellerButton}
+          onPress={handleContactSeller}
+        >
+          <ButtonIcon as={MessageSquare} size="sm" />
+          <ButtonText>Chat</ButtonText>
+        </Button>
+        
+        <Button
+          size="lg"
+          style={styles.addToCartButton}
+          onPress={handleAddToCart}
+          disabled={addingToCart || product.stockQuantity <= 0}
+        >
+          {addingToCart ? (
+            <ButtonSpinner />
+          ) : (
+            <ButtonText>
+              {product.stockQuantity > 0 ? 'Add to Cart' : 'Out of Stock'}
+            </ButtonText>
+          )}
+        </Button>
+      </HStack>
+      
+      {/* Review modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={reviewModalVisible}
+        onRequestClose={() => setReviewModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Write a Review</Text>
+            
+            <Text style={styles.ratingLabel}>Your Rating:</Text>
+            <HStack style={styles.ratingSelector}>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <TouchableOpacity
+                  key={`rating-${index}`}
+                  onPress={() => setUserRating(index + 1)}
+                  style={styles.ratingButton}
+                >
+                  <Star
+                    size={30}
+                    color="#F59E0B"
+                    fill={index < userRating ? "#F59E0B" : "none"}
+                    strokeWidth={1.5}
+                  />
+                </TouchableOpacity>
+              ))}
+            </HStack>
+            
+            <Text style={styles.reviewLabel}>Your Review (optional):</Text>
+            <TextInput
+              style={styles.reviewInput}
+              multiline
+              value={userReview}
+              onChangeText={setUserReview}
+              placeholder="Share your experience with this product..."
+              placeholderTextColor="#9CA3AF"
+            />
+            
+            <HStack style={styles.modalActions}>
               <Button
-                style={{ flex: 1 }}
                 variant="outline"
-                onPress={() => setIsReviewModalVisible(false)}
+                style={styles.cancelButton}
+                onPress={() => setReviewModalVisible(false)}
               >
                 <ButtonText>Cancel</ButtonText>
               </Button>
               
               <Button
-                style={{ flex: 1 }}
+                style={styles.submitButton}
                 onPress={handleSubmitReview}
-                disabled={reviewRating === 0 || !reviewComment.trim() || isSubmittingReview}
+                disabled={submittingReview || userRating === 0}
               >
-                {isSubmittingReview ? (
-                  <Spinner size="small" />
+                {submittingReview ? (
+                  <ButtonSpinner />
                 ) : (
                   <ButtonText>Submit</ButtonText>
                 )}
               </Button>
             </HStack>
-          </ModalFooter>
-        </ModalContent>
+          </View>
+        </View>
       </Modal>
-    </View>
+      
+      {/* All reviews modal (will be shown when "View all reviews" is clicked) */}
+      {/* This part can be implemented later when needed */}
+    </SafeAreaView>
   );
 }
 
-// Updated styles with better padding, spacing, and larger images
 const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 20,
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  headerBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#4B5563',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    color: '#EF4444',
+    marginBottom: 20,
+  },
+  header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
     zIndex: 10,
   },
-  headerButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  backButton: {
+    padding: 8,
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
   },
-  imageCarousel: {
-    width: '100%',
-    height: 450, // Increased height for larger images
-    backgroundColor: 'white',
+  iconButton: {
+    padding: 8,
+    marginLeft: 8,
   },
-  imageSlideLarge: {
-    width: Dimensions.get('window').width,
-    height: 450,
-    backgroundColor: 'white',
+  mediaContainer: {
+    position: 'relative',
+    height: width * 0.8, // Maintain aspect ratio
+    backgroundColor: '#F3F4F6',
   },
-  productImageLarge: {
+  mediaItem: {
+    width: width,
+    height: width * 0.8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'contain',
   },
-  discountBadge: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+  productVideo: {
+    width: '100%',
+    height: '100%',
   },
-  discountText: {
-    color: 'white',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  indicatorContainer: {
+  pagination: {
     position: 'absolute',
     bottom: 16,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    alignItems: 'center',
   },
-  indicator: {
+  paginationDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    marginHorizontal: 4,
   },
-  activeIndicator: {
-    backgroundColor: '#3B82F6',
+  paginationDotActive: {
+    backgroundColor: '#4F46E5',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
-  productInfoContainer: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    marginTop: -24,
-    padding: 20,
-  },
-  brandRatingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  brandText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  reviewCountText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  productName: {
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 28,
-    marginBottom: 8,
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  currentPrice: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#3B82F6',
-  },
-  originalPrice: {
-    fontSize: 16,
-    color: '#9CA3AF',
-    textDecorationLine: 'line-through',
-  },
-  stockBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  inStockBadge: {
-    backgroundColor: '#DCFCE7',
-  },
-  outOfStockBadge: {
-    backgroundColor: '#FEE2E2',
-  },
-  stockText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  inStockText: {
-    color: '#16A34A',
-  },
-  outOfStockText: {
-    color: '#DC2626',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  descriptionText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#4B5563',
-    marginBottom: 24,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  writeReviewButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-    borderRadius: 4,
-  },
-  writeReviewText: {
-    fontSize: 14,
-    color: '#3B82F6',
-    fontWeight: '500',
-  },
-  reviewsContainer: {
-    gap: 16,
-    marginBottom: 16,
-  },
-  reviewCard: {
+  productInfo: {
     padding: 16,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
   },
-  reviewHeader: {
+  productHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  reviewerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  productTitleContainer: {
+    flex: 1,
+    marginRight: 16,
   },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#E5E7EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
+  productName: {
+    fontSize: 20,
     fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  productBrand: {
+    fontSize: 14,
     color: '#6B7280',
   },
-  reviewerName: {
-    fontWeight: '600',
-    marginBottom: 2,
+  productPriceContainer: {
+    alignItems: 'flex-end',
   },
-  starsRow: {
+  productPrice: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  discountContainer: {
     flexDirection: 'row',
-    gap: 2,
+    alignItems: 'center',
+    marginTop: 2,
   },
-  reviewDate: {
+  mrpPrice: {
+    fontSize: 14,
+    color: '#6B7280',
+    textDecorationLine: 'line-through',
+    marginRight: 8,
+  },
+  discountText: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#059669',
+    fontWeight: '600',
   },
-  reviewComment: {
+  ratingsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  ratingStars: {
+    flexDirection: 'row',
+    marginRight: 8,
+  },
+  ratingText: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginLeft: 6,
+  },
+  noRatingsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  descriptionContainer: {
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  stockDeliveryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tagContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginRight: 12,
+  },
+  inStockTag: {
+    backgroundColor: 'rgba(5, 150, 105, 0.1)',
+  },
+  outOfStockTag: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  tagText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  inStockText: {
+    color: '#059669',
+  },
+  outOfStockText: {
+    color: '#EF4444',
+  },
+  deliveryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deliveryText: {
+    fontSize: 12,
+    color: '#4F46E5',
+    marginLeft: 4,
+  },
+  descriptionText: {
     fontSize: 14,
     color: '#4B5563',
     lineHeight: 20,
   },
-  seeAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 8,
-  },
-  seeAllText: {
-    color: '#3B82F6',
-    fontWeight: '500',
-  },
-  emptyReviewsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  noReviewsText: {
-    color: '#9CA3AF',
-    marginTop: 8,
-  },
-  beFirstButton: {
-    marginTop: 16,
+  additionalDetailsContainer: {
+    marginBottom: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
-    borderRadius: 4,
   },
-  beFirstText: {
-    color: '#3B82F6',
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '500',
   },
-  relatedProductsSection: {
-    marginBottom: 24,
-  },
-  relatedProductCard: {
-    width: 160,
-    marginRight: 16,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    overflow: 'hidden',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-  },
-  relatedProductInfo: {
-    padding: 12,
-    backgroundColor: 'white',
-  },
-  relatedBrandText: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  relatedProductName: {
+  detailValue: {
     fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
-    height: 40,
+    color: '#1F2937',
+    fontWeight: '500',
+    textAlign: 'right',
   },
-  relatedProductPrice: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#3B82F6',
+  specificationsContainer: {
+    marginBottom: 16,
   },
-  emptyRelatedContainer: {
+  specificationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  specificationKey: {
+    fontSize: 14,
+    color: '#6B7280',
+    flex: 1,
+  },
+  specificationValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    flex: 2,
+  },
+  reviewsContainer: {
+    marginBottom: 16,
+  },
+  reviewsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 40,
+    marginBottom: 12,
+  },
+  reviewItem: {
+    marginBottom: 12,
+    padding: 12,
     backgroundColor: '#F9FAFB',
     borderRadius: 8,
   },
-  noRelatedText: {
-    color: '#9CA3AF',
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  bottomBar: {
-    backgroundColor: 'white',
-    paddingHorizontal: 20,
-    paddingTop: 16,
+  reviewDate: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  reviewerName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  reviewText: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
+  noReviewsText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginVertical: 12,
+  },
+  viewAllReviewsButton: {
+    marginTop: 8,
+    alignSelf: 'center',
+  },
+  relatedProductsContainer: {
+    marginBottom: 20,
+  },
+  relatedProductsScroll: {
+    paddingRight: 16,
+  },
+  relatedProductItem: {
+    width: 120,
+    marginRight: 12,
+  },
+  relatedProductImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  relatedProductName: {
+    fontSize: 14,
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+  relatedProductPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+  },
+  contactSellerButton: {
+    flex: 1,
+    marginRight: 8,
+    borderColor: '#4F46E5',
   },
   addToCartButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flex: 2,
+    backgroundColor: '#4F46E5',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    backgroundColor: '#3B82F6',
-    paddingVertical: 16,
-    borderRadius: 8,
-    gap: 8,
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  disabledButton: {
-    backgroundColor: '#D1D5DB',
+  modalContent: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  addToCartText: {
-    color: 'white',
+  modalTitle: {
+    fontSize: 18,
     fontWeight: '600',
-    fontSize: 16,
-  }
+    color: '#1F2937',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  ratingLabel: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginBottom: 8,
+  },
+  ratingSelector: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  ratingButton: {
+    padding: 8,
+  },
+  reviewLabel: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginBottom: 8,
+  },
+  reviewInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#1F2937',
+    height: 120,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cancelButton: {
+    flex: 1,
+    marginRight: 8,
+  },
+  submitButton: {
+    flex: 1,
+    backgroundColor: '#4F46E5',
+  },
 });

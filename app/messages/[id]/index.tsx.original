@@ -2,22 +2,21 @@ import { Image } from '@/components/ui/image';
 import { Message } from '@/services/chatService';
 import { useChatContext } from '@/services/context/ChatContext';
 import { getCurrentUserId, getUserProfileWithCache } from '@/services/userService';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Package, Send, ShoppingCart } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,69 +39,31 @@ export default function ChatDetailScreen() {
     loadMoreMessages,
   } = useChatContext();
   
-  // Get current user ID - improved implementation with AsyncStorage as backup
+  // Get current user ID
   useEffect(() => {
     const getUser = async () => {
-      try {
-        // First try with the user service
-        const userId = await getCurrentUserId();
-        if (userId) {
-          setCurrentUserId(userId);
-          console.log('Current user ID set from service:', userId);
-          return;
-        }
-        
-        // If that fails, try directly with AsyncStorage
-        const userData = await AsyncStorage.getItem('user');
-        if (userData) {
-          const user = JSON.parse(userData);
-          if (user.uid) {
-            setCurrentUserId(user.uid);
-            console.log('Current user ID set from AsyncStorage:', user.uid);
-          }
-        }
-      } catch (error) {
-        console.error('Error getting current user ID:', error);
-      }
+      const userId = await getCurrentUserId();
+      setCurrentUserId(userId);
     };
     
     getUser();
   }, []);
 
-  // Load conversation on mount - with improved security
+  // Load conversation on mount
   useEffect(() => {
-    // Don't load until we have a user ID
-    if (id && currentUserId) {
-      console.log(`Loading conversation ${id} as user ${currentUserId}`);
+    if (id) {
+      loadConversation(id);
       
-      // First, try to load the conversation
-      loadConversation(id)
-        .then(() => {
-          // After loading, check if this is a valid conversation for the current user
-          if (!currentConversation || 
-              !currentConversation.participantIds?.includes(currentUserId) ||
-              !currentConversation.participants?.some(p => p.id === currentUserId)) {
-            // Not authorized - redirect to messages list
-            console.warn(`User ${currentUserId} not authorized for conversation ${id}`);
-            router.replace('/messages');
-            return;
-          }
-          
-          // Mark as read after a short delay to ensure it's loaded
-          const readTimeout = setTimeout(() => {
-            markConversationAsRead(id);
-          }, 1000);
-          
-          return () => clearTimeout(readTimeout);
-        })
-        .catch(error => {
-          console.error(`Error loading conversation ${id}:`, error);
-          router.replace('/messages');
-        });
+      // Mark as read after a short delay to ensure it's loaded
+      const readTimeout = setTimeout(() => {
+        markConversationAsRead(id);
+      }, 1000);
+      
+      return () => clearTimeout(readTimeout);
     }
-    // Add currentUserId as dependency so we reload when user is identified
+    // Only depend on id to prevent infinite refresh loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, currentUserId]);
+  }, [id]);
   
   // Fetch user profiles for all participants
   useEffect(() => {
@@ -281,26 +242,13 @@ export default function ChatDetailScreen() {
     );
   };
 
-  // Find other participant for header - improved implementation with more robust user identification
-  const otherParticipant = React.useMemo(() => {
-    if (!currentConversation?.participants || !currentUserId) {
-      // If we don't have participants or user ID, return first participant or null
-      return currentConversation?.participants?.[0] || null;
-    }
-    
-    // Find the participant that isn't the current user
-    const other = currentConversation.participants.find(p => p.id !== currentUserId);
-    
-    // If we found one, great; otherwise fallback to first participant
-    if (other) {
-      console.log(`Found other participant: ${other.name} (${other.id})`);
-      return other;
-    } else {
-      console.log('Could not find non-current user participant, using first participant as fallback');
-      return currentConversation.participants[0];
-    }
-  }, [currentConversation, currentUserId]);
-  
+  // Find other participant for header
+  // The ChatContext sorts participants so the other user is always first
+  const otherParticipant = currentConversation?.participants && 
+    currentConversation.participants.length > 0 
+      ? currentConversation.participants[0] 
+      : null;
+      
   // Get enhanced profile for other participant if available
   const otherUserProfile = otherParticipant?.id ? userProfiles[otherParticipant.id] : null;
       
@@ -309,63 +257,6 @@ export default function ChatDetailScreen() {
   const avatarUrl = otherUserProfile?.avatar || otherParticipant?.avatar || '';
   const userType = otherParticipant?.type || '';
 
-  // Check if the user is authorized to view this conversation
-  const isAuthorized = currentUserId && (
-    // Check if user is in participants array
-    currentConversation?.participants?.some(p => p.id === currentUserId) ||
-    // Also check participantIds array if it exists
-    currentConversation?.participantIds?.includes(currentUserId) || 
-    false
-  );
-  
-  // Show unauthorized screen if we know the user isn't allowed to see this
-  if (currentUserId && currentConversation && !isAuthorized) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-        <View style={{
-          padding: 20,
-          backgroundColor: '#FEF2F2',
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: '#FEE2E2',
-          marginHorizontal: 20,
-          alignItems: 'center',
-        }}>
-          <Text style={{
-            fontSize: 18,
-            fontWeight: '600',
-            color: '#B91C1C',
-            marginBottom: 12,
-          }}>
-            Access Denied
-          </Text>
-          <Text style={{
-            fontSize: 16,
-            color: '#7F1D1D',
-            textAlign: 'center',
-            marginBottom: 16,
-          }}>
-            You are not authorized to view this conversation.
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.replace('/messages')}
-            style={{
-              backgroundColor: '#EF4444',
-              paddingVertical: 12,
-              paddingHorizontal: 24,
-              borderRadius: 8,
-            }}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
-              Go Back
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-  
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}

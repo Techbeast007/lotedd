@@ -188,7 +188,14 @@ export default function MessagesScreen() {
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {item.lastMessage?.text || 'No messages yet'}
+              {/* Always show contextual information instead of "No messages yet" */}
+              {item.lastMessage?.text || 
+                (item.relatedTo?.type === 'product' 
+                  ? `About product: ${item.relatedTo.name || ''}`
+                  : item.relatedTo?.type === 'order'
+                    ? `About order: ${item.relatedTo.name || ''}`
+                    : 'Start a conversation')
+              }
             </Text>
             
             {/* Show unread badge if there are unread messages */}

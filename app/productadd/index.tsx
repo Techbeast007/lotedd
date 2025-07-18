@@ -43,6 +43,7 @@ const ProductAdd = () => {
     const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
     const [filteredCategories, setFilteredCategories] = useState(categories);
     const [images, setImages] = useState<string[]>([]);
+    // Videos feature disabled due to native module issues
     const [videos, setVideos] = useState<string[]>([]);
     const [sellerId, setSellerId] = useState('');
     const [showCategories, setShowCategories] = useState(false);
@@ -64,6 +65,9 @@ const ProductAdd = () => {
     const [manufacturingCost, setManufacturingCost] = useState('');
     const [sellingPricePerPiece, setSellingPricePerPiece] = useState('');
     const [wholeStockPrice, setWholeStockPrice] = useState('');
+    const [moq, setMoq] = useState(''); // Minimum Order Quantity
+    const [condition, setCondition] = useState('new'); // Product condition: new, used, refurbished
+    const [damagePercentage, setDamagePercentage] = useState('0'); // Damage percentage
 
 
     const handleSelectFeaturedImage = async () => {
@@ -143,6 +147,9 @@ const ProductAdd = () => {
         setManufacturingCost('');
         setSellingPricePerPiece('');
         setWholeStockPrice('');
+        setMoq('');
+        setCondition('new');
+        setDamagePercentage('0');
       };
   
       const handleAddProduct = async () => {
@@ -200,6 +207,9 @@ const ProductAdd = () => {
             manufacturingCost: parseFloat(manufacturingCost) || 0,
             sellingPricePerPiece: parseFloat(sellingPricePerPiece) || 0,
             wholeStockPrice: parseFloat(wholeStockPrice) || 0,
+            moq: parseInt(moq) || 1, // Minimum Order Quantity
+            condition: condition || 'new', // Product condition
+            damagePercentage: parseFloat(damagePercentage) || 0, // Damage percentage
             createdAt: firestore.FieldValue.serverTimestamp(),
           });
       
@@ -437,6 +447,7 @@ const handleSelectImages = async () => {
               </Input>
               
               <Text className="text-md font-medium text-slate-700 mt-2">Selling Price (per piece)*</Text>
+              <Text className="text-xs text-red-500 mb-1">(Note: Selling price should be higher than manufacturing cost)</Text>
               <Input className="mb-2">
                 <InputSlot className="pl-3">
                   <InputField
@@ -455,6 +466,18 @@ const handleSelectImages = async () => {
                     placeholder="Enter base price"
                     value={basePrice}
                     onChangeText={setBasePrice}
+                    keyboardType="numeric"
+                  />
+                </InputSlot>
+              </Input>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Minimum Order Quantity (MOQ)</Text>
+              <Input className="mb-2">
+                <InputSlot className="pl-3">
+                  <InputField
+                    placeholder="Enter minimum order quantity"
+                    value={moq}
+                    onChangeText={setMoq}
                     keyboardType="numeric"
                   />
                 </InputSlot>
@@ -495,6 +518,44 @@ const handleSelectImages = async () => {
                   />
                 </InputSlot>
               </Input>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Product Condition</Text>
+              <Box className="mb-4">
+                <Select
+                  selectedValue={condition}
+                  onValueChange={(value) => setCondition(value)}
+                >
+                  <SelectTrigger>
+                    <SelectInput placeholder="Select condition" />
+                    <SelectIcon>
+                      <ChevronDownIcon />
+                    </SelectIcon>
+                  </SelectTrigger>
+                  <SelectPortal>
+                    <SelectBackdrop />
+                    <SelectContent>
+                      <SelectDragIndicatorWrapper>
+                        <SelectDragIndicator />
+                      </SelectDragIndicatorWrapper>
+                      <SelectItem label="New" value="new" />
+                      <SelectItem label="Used" value="used" />
+                      <SelectItem label="Refurbished" value="refurbished" />
+                    </SelectContent>
+                  </SelectPortal>
+                </Select>
+              </Box>
+              
+              <Text className="text-md font-medium text-slate-700 mt-2">Damage Percentage (if any)</Text>
+              <Input className="mb-2">
+                <InputSlot className="pl-3">
+                  <InputField
+                    placeholder="Enter damage percentage (0-100)"
+                    value={damagePercentage}
+                    onChangeText={setDamagePercentage}
+                    keyboardType="numeric"
+                  />
+                </InputSlot>
+              </Input>
             </VStack>
           </Box>
 
@@ -527,21 +588,24 @@ const handleSelectImages = async () => {
             <Input className="mb-4">
               <InputSlot className="pl-3">
                 <InputField
-            placeholder="Enter weight"
+            placeholder="Enter weight in kg"
             value={weight}
             onChangeText={setWeight}
+            keyboardType="numeric"
                 />
               </InputSlot>
             </Input>
+            <Text className="text-xs text-gray-500 mt-1 mb-2">Weight should be in kilograms (kg)</Text>
             <Input className="mb-4">
               <InputSlot className="pl-3">
                 <InputField
-            placeholder="Enter dimensions (L x W x H)"
+            placeholder="Enter dimensions in cm (L x W x H)"
             value={dimensions}
             onChangeText={setDimensions}
                 />
               </InputSlot>
             </Input>
+            <Text className="text-xs text-gray-500 mt-1">All dimensions should be in centimeters (cm)</Text>
             <Box className="mb-4"></Box>
             <Text className="text-xl font-bold mb-4">Status</Text>
             <Box>
