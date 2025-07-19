@@ -67,20 +67,40 @@ export const clearUserProfileCache = (userId?: string) => {
   }
 };
 
-// Get current authenticated user ID
+// Get current authenticated user ID with enhanced error handling and debugging
 export const getCurrentUserId = async (): Promise<string | null> => {
   try {
     // Check from Auth
     const currentUser = auth().currentUser;
-    if (currentUser) return currentUser.uid;
+    if (currentUser) {
+      console.log('Found user ID from auth:', currentUser.uid);
+      return currentUser.uid;
+    }
     
     // If not in Auth, check AsyncStorage
     const userData = await AsyncStorage.getItem('user');
     if (userData) {
-      const user = JSON.parse(userData);
-      return user.uid || null;
+      try {
+        const user = JSON.parse(userData);
+        if (user && user.uid) {
+          console.log('Found user ID from AsyncStorage:', user.uid);
+          return user.uid;
+        }
+        console.warn('AsyncStorage user data exists but no uid found:', user);
+      } catch (parseError) {
+        console.error('Failed to parse user data from AsyncStorage:', parseError);
+      }
+    } else {
+      console.warn('No user data found in AsyncStorage');
     }
     
+    // As a last resort, check if we have other storage keys that might indicate the user
+    const currentRole = await AsyncStorage.getItem('currentRole');
+    if (currentRole) {
+      console.warn('Found role but no user ID. Role:', currentRole);
+    }
+    
+    console.error('Failed to get current user ID from any source');
     return null;
   } catch (error) {
     console.error('Error getting current user ID:', error);

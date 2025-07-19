@@ -44,8 +44,8 @@ export interface Order {
   trackingId?: string;
 }
 
-// Razorpay API key (should be stored in environment variables in production)
-const RAZORPAY_KEY_ID = 'rzp_test_YOUR_KEY_HERE'; // Replace with your actual test key
+// Razorpay API key from environment variables
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_YOUR_KEY_HERE';
 
 /**
  * Create a new order in Firestore
@@ -180,7 +180,7 @@ export const handleRazorpaySuccess = async (
     const paymentAmount = Math.ceil(orderData.totalAmount * 0.5);
     
     // Create a payment record
-    const paymentData: Omit<Payment, 'id'> = {
+    const newPayment: Omit<Payment, 'id'> = {
       userId: user.uid,
       orderId,
       amount: paymentAmount,
@@ -194,7 +194,7 @@ export const handleRazorpaySuccess = async (
       updatedAt: firestore.FieldValue.serverTimestamp(),
     };
     
-    const paymentRef = await firestore().collection('payments').add(paymentData);
+    const paymentRef = await firestore().collection('payments').add(newPayment);
     
     // Update order with payment info
     await orderRef.update({
@@ -419,7 +419,7 @@ export const handleRemainingPaymentSuccess = async (
     const orderData = orderSnapshot.data() as Order;
     
     // Create a payment record for the remaining amount
-    const paymentData2: Omit<Payment, 'id'> = {
+    const newPayment: Omit<Payment, 'id'> = {
       userId: user.uid,
       orderId,
       amount: orderData.remainingAmount,
@@ -433,7 +433,7 @@ export const handleRemainingPaymentSuccess = async (
       updatedAt: firestore.FieldValue.serverTimestamp(),
     };
     
-    const paymentRef = await firestore().collection('payments').add(paymentData2);
+    const paymentRef = await firestore().collection('payments').add(newPayment);
     
     // Update order to completed status
     await orderRef.update({

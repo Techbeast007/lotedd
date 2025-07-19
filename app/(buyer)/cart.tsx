@@ -1,3 +1,4 @@
+import ShippingCalculator from '@/components/ShippingCalculator';
 import { Box } from '@/components/ui/box';
 import { Button, ButtonText } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,11 +10,11 @@ import { useCart } from '@/services/context/CartContext';
 import { useRouter } from 'expo-router';
 import { Heart, Minus, Plus, ShoppingCart, Trash2 } from 'lucide-react-native';
 import React from 'react';
-import { Animated, Image, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
+import { Animated, Image, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function CartScreen() {
-  const { items, removeItem, updateQuantity, clearItems, totalPrice, isLoading } = useCart();
+  const { items, removeItem, updateQuantity, clearItems, totalPrice, shippingCost } = useCart();
   const insets = useSafeAreaInsets();
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function CartScreen() {
       duration: 500,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
   const handleCheckout = () => {
     router.push('/(checkout)');
@@ -208,6 +209,123 @@ export default function CartScreen() {
     </Box>
   );
 
+  // ShippingCostDisplay Component
+  const ShippingCostDisplay = () => {
+    const { shippingCost, setShippingCost, shippingAddress, updateShippingAddress, selectedCourier, setSelectedCourier } = useCart();
+    const [showShippingModal, setShowShippingModal] = useState(false);
+    const [pincode, setPincode] = useState(shippingAddress?.pincode || '');
+    
+    // This would typically come from user profile or warehouse settings
+    const sourcePostcode = '110001'; // Default warehouse pincode
+    
+    const handleShippingRateSelect = (rate: any) => {
+      setShippingCost(rate.total_shipping_charges);
+      setSelectedCourier({
+        id: rate.courier_id,
+        name: rate.courier_name
+      });
+      setShowShippingModal(false);
+    };
+    
+    // Update shipping address
+    const handleSetPincode = () => {
+      if (pincode) {
+        updateShippingAddress({ ...shippingAddress, pincode });
+        setShowShippingModal(true);
+      }
+    };
+    
+    if (!shippingAddress?.pincode) {
+      return (
+        <TouchableOpacity 
+          onPress={() => setShowShippingModal(true)}
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+        >
+          <Text className="text-blue-600 font-semibold">Calculate</Text>
+        </TouchableOpacity>
+      );
+    }
+    
+    return (
+      <>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {shippingCost > 0 ? (
+            <>
+              <Text className="text-base font-semibold">₹{shippingCost.toFixed(2)}</Text>
+              {selectedCourier && (
+                <TouchableOpacity onPress={() => setShowShippingModal(true)} style={{ marginLeft: 6 }}>
+                  <Text className="text-xs text-blue-600">({selectedCourier.name})</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <TouchableOpacity onPress={() => setShowShippingModal(true)}>
+              <Text className="text-base font-semibold text-blue-600">Calculate</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        <Modal
+          visible={showShippingModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowShippingModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Shipping Options</Text>
+              
+              {!shippingAddress?.pincode && (
+                <View style={styles.pincodeContainer}>
+                  <TextInput
+                    style={styles.pincodeInput}
+                    placeholder="Enter Delivery Pincode"
+                    keyboardType="number-pad"
+                    value={pincode}
+                    onChangeText={setPincode}
+                  />
+                  <TouchableOpacity 
+                    style={styles.pincodeButton}
+                    onPress={handleSetPincode}
+                  >
+                    <Text style={styles.pincodeButtonText}>Apply</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {shippingAddress?.pincode && (
+                <ShippingRatesComponent
+                  sourcePostalCode={sourcePostcode}
+                  destinationPostalCode={shippingAddress.pincode}
+                  onSelectRate={handleShippingRateSelect}
+                />
+              )}
+              
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowShippingModal(false)}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
+    );
+  };
+
+  // CartTotalDisplay Component
+  const CartTotalDisplay = () => {
+    const { totalPrice, shippingCost } = useCart();
+    const total = totalPrice + shippingCost;
+    
+    return (
+      <Text className="text-xl font-bold text-blue-600">
+        ₹{total.toLocaleString()}
+      </Text>
+    );
+  };
+
   if (items.length === 0) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -280,7 +398,16 @@ export default function CartScreen() {
                 </HStack>
                 <HStack className="justify-between items-center">
                   <Text className="text-gray-600">Shipping</Text>
-                  <Text className="text-base font-semibold text-green-600">Free</Text>
+                  {items.length > 0 ? (
+                    <Text className="text-base font-semibold">
+                      {shippingCost > 0 ? 
+                        `₹${shippingCost.toFixed(2)}` : 
+                        'Calculate below'
+                      }
+                    </Text>
+                  ) : (
+                    <Text className="text-base font-semibold text-green-600">Free</Text>
+                  )}
                 </HStack>
                 <HStack className="justify-between items-center">
                   <Text className="text-gray-600">Tax</Text>
@@ -289,9 +416,16 @@ export default function CartScreen() {
                 <Box className="h-px bg-gray-200" />
                 <HStack className="justify-between items-center">
                   <Text className="text-lg font-bold text-gray-900">Total</Text>
-                  <Text className="text-xl font-bold text-blue-600">₹{totalPrice.toLocaleString()}</Text>
+                  <Text className="text-xl font-bold text-blue-600">
+                    ₹{(totalPrice + shippingCost).toLocaleString()}
+                  </Text>
                 </HStack>
               </VStack>
+
+              {/* Shipping Calculator */}
+              {items.length > 0 && (
+                <ShippingCalculator sourcePostcode="110001" />
+              )}
 
               {/* Checkout Button */}
               <TouchableOpacity
@@ -309,9 +443,15 @@ export default function CartScreen() {
                   elevation: 4,
                 }}
                 onPress={handleCheckout}
+                disabled={items.length > 0 && shippingCost <= 0}
               >
                 <HStack className="items-center" style={{ gap: 8 }}>
-                  <Text className="text-white text-base font-bold">Proceed to Checkout</Text>
+                  <Text className="text-white text-base font-bold">
+                    {items.length > 0 && shippingCost <= 0 ? 
+                      'Calculate Shipping First' : 
+                      'Proceed to Checkout'
+                    }
+                  </Text>
                   <ShoppingCart size={18} color="#FFFFFF" />
                 </HStack>
               </TouchableOpacity>
@@ -325,3 +465,58 @@ export default function CartScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  pincodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  pincodeInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 10,
+    marginRight: 10,
+  },
+  pincodeButton: {
+    backgroundColor: '#007BFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  pincodeButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    marginTop: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    color: '#007BFF',
+    fontWeight: 'bold',
+  }
+});

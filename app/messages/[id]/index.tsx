@@ -6,20 +6,176 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format } from 'date-fns';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Package, Send, ShoppingCart } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    FlatList,
-    KeyboardAvoidingView,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Define a separate DateSeparator component
+const DateSeparator = memo(({ date }: { date: any }) => {
+  if (!date) return null;
+  
+  // Convert Firebase timestamp or Date to JavaScript Date
+  const messageDate = typeof date === 'object' && 'seconds' in date
+    ? new Date(date.seconds * 1000)
+    : new Date(date);
+    
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  let dayText;
+  if (messageDate.toDateString() === today.toDateString()) {
+    dayText = 'Today';
+  } else if (messageDate.toDateString() === yesterday.toDateString()) {
+    dayText = 'Yesterday';
+  } else {
+    dayText = format(messageDate, 'MMMM d, yyyy');
+  }
+  
+  return (
+    <View style={styles.dateSeparator}>
+      <Text style={styles.dateSeparatorText}>
+        {dayText}
+      </Text>
+    </View>
+  );
+});
+
+// Add display name to fix the lint error
+DateSeparator.displayName = 'DateSeparator';
+
+const MessageItem = memo(({ 
+  item, 
+  currentUserId, 
+  userProfiles,
+  formatMessageDate 
+}: { 
+  item: Message; 
+  currentUserId: string | null; 
+  userProfiles: Record<string, any>;
+  formatMessageDate: (date: any) => string;
+}) => {
+  // Helper function to extract uid from JSON string IDs
+  const extractUid = (id: string): string => {
+    if (id && typeof id === 'string' && id.startsWith('{') && id.endsWith('}') && id.includes('uid')) {
+      try {
+        const parsed = JSON.parse(id);
+        return parsed.uid || id;
+      } catch {
+        return id;
+      }
+    }
+    return String(id);
+  };
+  
+  // Check if the current user sent this message - using cleaned IDs
+  const userIdStr = currentUserId ? extractUid(String(currentUserId)) : '';
+  const senderIdStr = item.senderId ? extractUid(String(item.senderId)) : '';
+  const isCurrentUser = userIdStr && senderIdStr && userIdStr === senderIdStr;
+  
+  // Get enhanced profile for the sender if available
+  const senderProfile = userProfiles[item.senderId];
+  
+  // Use enhanced profile data if available
+  const senderName = senderProfile?.name || item.senderName || '';
+  const senderAvatar = senderProfile?.avatar || item.senderAvatar || '';
+  
+  // Get badge color based on sender type
+  const getSenderBadgeColor = () => {
+    switch(item.senderType) {
+      case 'seller': return styles.sellerMessageBadge;
+      case 'admin': return styles.adminMessageBadge;
+      default: return styles.buyerMessageBadge;
+    }
+  };
+  
+  return (
+    <View style={[
+      styles.messageContainer,
+      isCurrentUser ? styles.sentMessage : styles.receivedMessage
+    ]}>
+      {/* Show avatar for received messages */}
+      {!isCurrentUser && (
+        <View style={styles.messageAvatarContainer}>
+          {senderAvatar ? (
+            <Image
+              source={{ uri: senderAvatar }}
+              style={styles.messageAvatar}
+              alt={senderName}
+            />
+          ) : (
+            <View style={[
+              styles.messageAvatarFallback,
+              item.senderType === 'seller' ? styles.sellerAvatarFallback : 
+              item.senderType === 'admin' ? styles.adminAvatarFallback : styles.buyerAvatarFallback
+            ]}>
+              <Text style={styles.messageAvatarInitial}>
+                {senderName ? senderName.charAt(0).toUpperCase() : '?'}
+              </Text>
+            </View>
+          )}
+          
+          {/* Small badge showing role */}
+          <View style={[styles.messageSenderBadge, getSenderBadgeColor()]}>
+            <Text style={styles.messageSenderBadgeText}>
+              {item.senderType === 'seller' ? 'S' : 
+               item.senderType === 'admin' ? 'A' : 'B'}
+            </Text>
+          </View>
+        </View>
+      )}
+      
+      <View style={styles.messageContentContainer}>
+        {/* Show sender name for received messages */}
+        {!isCurrentUser && (
+          <Text style={styles.messageSenderName}>
+            {senderName}
+          </Text>
+        )}
+        
+        <View style={[
+          styles.messageBubble,
+          isCurrentUser ? styles.sentBubble : styles.receivedBubble
+        ]}>
+          <Text style={[
+            styles.messageText,
+            isCurrentUser ? styles.sentMessageText : styles.receivedMessageText
+          ]}>
+            {item.text}
+          </Text>
+        </View>
+        
+        <Text style={[
+          styles.timeText,
+          isCurrentUser ? styles.sentTimeText : styles.receivedTimeText
+        ]}>
+          {formatMessageDate(item.createdAt)}
+        </Text>
+      </View>
+    </View>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function to prevent unnecessary rerenders
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.currentUserId === nextProps.currentUserId &&
+    prevProps.item.text === nextProps.item.text
+  );
+});
+
+// Add display name to MessageItem
+MessageItem.displayName = 'MessageItem';
 
 export default function ChatDetailScreen() {
   const router = useRouter();
@@ -69,24 +225,84 @@ export default function ChatDetailScreen() {
     getUser();
   }, []);
 
-  // Load conversation on mount - with improved security
+  // Load conversation on mount - with improved security and error handling
   useEffect(() => {
     // Don't load until we have a user ID
     if (id && currentUserId) {
       console.log(`Loading conversation ${id} as user ${currentUserId}`);
       
-      // First, try to load the conversation
+      // Flag to prevent multiple redirects
+      let redirecting = false;
+      
+      // First, try to load the conversation with error handling
       loadConversation(id)
         .then(() => {
           // After loading, check if this is a valid conversation for the current user
-          if (!currentConversation || 
-              !currentConversation.participantIds?.includes(currentUserId) ||
-              !currentConversation.participants?.some(p => p.id === currentUserId)) {
-            // Not authorized - redirect to messages list
-            console.warn(`User ${currentUserId} not authorized for conversation ${id}`);
-            router.replace('/messages');
+          if (!currentConversation) {
+            console.warn(`Conversation ${id} not found or failed to load`);
+            if (!redirecting) {
+              redirecting = true;
+              router.replace('/messages');
+            }
             return;
           }
+          
+          // Check both participantIds array and participants array to verify access
+          // Use string comparison for safer checks
+          const userIdStr = String(currentUserId);
+          
+          // Debug the conversation data
+          console.log(`DEBUG: Chat screen checking authorization for user ${userIdStr} in conversation:`, {
+            conversationId: id,
+            hasParticipantIds: !!currentConversation.participantIds,
+            participantIdsCount: currentConversation.participantIds?.length || 0,
+            participantsCount: currentConversation.participants?.length || 0
+          });
+          
+          // Helper function to extract uid from JSON string IDs
+          const extractUid = (id: string): string => {
+            if (id.startsWith('{') && id.endsWith('}') && id.includes('uid')) {
+              try {
+                const parsed = JSON.parse(id);
+                return parsed.uid || id;
+              } catch {
+                return id;
+              }
+            }
+            return id;
+          };
+          
+          // Convert IDs to strings for safer comparison and handle JSON string IDs
+          const isInParticipantIds = currentConversation.participantIds?.some(id => {
+            if (!id) return false;
+            const extractedId = extractUid(String(id));
+            return extractedId === userIdStr;
+          });
+          
+          const isInParticipants = currentConversation.participants?.some(p => {
+            if (!p || !p.id) return false;
+            const extractedId = extractUid(String(p.id));
+            return extractedId === userIdStr;
+          });
+          
+          // Check if user is authorized to view this conversation
+          if (!isInParticipantIds && !isInParticipants) {
+            console.error(`User ${userIdStr} is NOT authorized to view conversation ${id} - redirecting to messages`);
+            
+            // Log participant data for debugging
+            console.log(`Conversation participant IDs:`, currentConversation.participantIds?.map(id => 
+              `${id} (extracted: ${extractUid(String(id))})`
+            ));
+            
+            if (!redirecting) {
+              redirecting = true;
+              alert('You are not authorized to view this conversation.');
+              router.replace('/messages');
+            }
+            return;
+          }
+          
+          console.log(`User ${currentUserId} authorized to view conversation ${id}`);
           
           // Mark as read after a short delay to ensure it's loaded
           const readTimeout = setTimeout(() => {
@@ -97,12 +313,14 @@ export default function ChatDetailScreen() {
         })
         .catch(error => {
           console.error(`Error loading conversation ${id}:`, error);
+          // Alert the user about the error before redirecting
+          alert('Error loading conversation: ' + (error.message || 'Unknown error'));
           router.replace('/messages');
         });
     }
-    // Add currentUserId as dependency so we reload when user is identified
+    // Add currentConversation as dependency so we check again when it loads
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, currentUserId]);
+  }, [id, currentUserId, currentConversation]);
   
   // Fetch user profiles for all participants
   useEffect(() => {
@@ -142,28 +360,31 @@ export default function ChatDetailScreen() {
     }
   }, [messages]);
   
-  // Handle sending a message
-  const handleSendMessage = async () => {
+  // Handle sending a message with improved error handling - now memoized with useCallback
+  const handleSendMessage = useCallback(async () => {
     if (!message.trim() || !id) return;
     
     try {
+      console.log(`Sending message in conversation ${id} as user ${currentUserId}`);
       await sendChatMessage(id, message.trim());
       setMessage('');
       
-      // Refresh the conversation to see the new message immediately
-      await loadConversation(id);
+      // No need to manually refresh - the subscription in ChatContext will update the messages
+      // This reduces unnecessary rerenders from multiple loadConversation calls
     } catch (error) {
       console.error('Failed to send message:', error);
+      // Show a user-friendly error message
+      alert('Failed to send message. Please check your connection and try again.');
     }
-  };
+  }, [message, id, currentUserId, sendChatMessage]);
   
-  // Load more messages when scrolling
-  const handleLoadMore = async () => {
+  // Load more messages when scrolling - memoized with useCallback
+  const handleLoadMore = useCallback(async () => {
     await loadMoreMessages();
-  };
+  }, [loadMoreMessages]);
   
-  // Format message date
-  const formatMessageDate = (date: any) => {
+  // Memoize the formatMessageDate function
+  const formatMessageDate = useCallback((date: any) => {
     // Convert Firebase timestamp or Date to JavaScript Date
     const messageDate = typeof date === 'object' && 'seconds' in date
       ? new Date(date.seconds * 1000)
@@ -171,132 +392,52 @@ export default function ChatDetailScreen() {
     
     // Format time as h:mm a (e.g., "3:42 PM")
     return format(messageDate, 'h:mm a');
-  };
+  }, []);
   
-  // Format date for message grouping
-  const formatMessageDay = (date: any) => {
-    // Convert Firebase timestamp or Date to JavaScript Date
-    const messageDate = typeof date === 'object' && 'seconds' in date
-      ? new Date(date.seconds * 1000)
-      : new Date(date);
-      
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (messageDate.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (messageDate.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return format(messageDate, 'MMMM d, yyyy');
-    }
-  };
-  
-  // Render a message item
-  const renderMessageItem = ({ item }: { item: Message }) => {
-    // Check if the current user sent this message
-    const isCurrentUser = currentUserId && item.senderId === currentUserId;
-    
-    // Get enhanced profile for the sender if available
-    const senderProfile = userProfiles[item.senderId];
-    
-    // Use enhanced profile data if available
-    const senderName = senderProfile?.name || item.senderName || '';
-    const senderAvatar = senderProfile?.avatar || item.senderAvatar || '';
-    
-    // Get badge color based on sender type
-    const getSenderBadgeColor = () => {
-      switch(item.senderType) {
-        case 'seller': return styles.sellerMessageBadge;
-        case 'admin': return styles.adminMessageBadge;
-        default: return styles.buyerMessageBadge;
-      }
-    };
-    
+  // Replace renderMessageItem with a memoized version
+  const renderMessageItem = useCallback(({ item }: { item: Message }) => {
     return (
-      <View style={[
-        styles.messageContainer,
-        isCurrentUser ? styles.sentMessage : styles.receivedMessage
-      ]}>
-        {/* Show avatar for received messages */}
-        {!isCurrentUser && (
-          <View style={styles.messageAvatarContainer}>
-            {senderAvatar ? (
-              <Image
-                source={{ uri: senderAvatar }}
-                style={styles.messageAvatar}
-                alt={senderName}
-              />
-            ) : (
-              <View style={[
-                styles.messageAvatarFallback,
-                item.senderType === 'seller' ? styles.sellerAvatarFallback : 
-                item.senderType === 'admin' ? styles.adminAvatarFallback : styles.buyerAvatarFallback
-              ]}>
-                <Text style={styles.messageAvatarInitial}>
-                  {senderName ? senderName.charAt(0).toUpperCase() : '?'}
-                </Text>
-              </View>
-            )}
-            
-            {/* Small badge showing role */}
-            <View style={[styles.messageSenderBadge, getSenderBadgeColor()]}>
-              <Text style={styles.messageSenderBadgeText}>
-                {item.senderType === 'seller' ? 'S' : 
-                 item.senderType === 'admin' ? 'A' : 'B'}
-              </Text>
-            </View>
-          </View>
-        )}
-        
-        <View style={styles.messageContentContainer}>
-          {/* Show sender name for received messages */}
-          {!isCurrentUser && (
-            <Text style={styles.messageSenderName}>
-              {senderName}
-            </Text>
-          )}
-          
-          <View style={[
-            styles.messageBubble,
-            isCurrentUser ? styles.sentBubble : styles.receivedBubble
-          ]}>
-            <Text style={[
-              styles.messageText,
-              isCurrentUser ? styles.sentMessageText : styles.receivedMessageText
-            ]}>
-              {item.text}
-            </Text>
-          </View>
-          
-          <Text style={[
-            styles.timeText,
-            isCurrentUser ? styles.sentTimeText : styles.receivedTimeText
-          ]}>
-            {formatMessageDate(item.createdAt)}
-          </Text>
-        </View>
-      </View>
+      <MessageItem 
+        item={item}
+        currentUserId={currentUserId}
+        userProfiles={userProfiles}
+        formatMessageDate={formatMessageDate}
+      />
     );
-  };
+  }, [currentUserId, userProfiles, formatMessageDate]);
 
-  // Find other participant for header - improved implementation with more robust user identification
-  const otherParticipant = React.useMemo(() => {
+  // Memoize the other participant calculation
+  const otherParticipant = useMemo(() => {
     if (!currentConversation?.participants || !currentUserId) {
-      // If we don't have participants or user ID, return first participant or null
       return currentConversation?.participants?.[0] || null;
     }
     
-    // Find the participant that isn't the current user
-    const other = currentConversation.participants.find(p => p.id !== currentUserId);
+    // Helper function to extract uid from JSON string IDs
+    const extractUid = (id: string): string => {
+      if (id && typeof id === 'string' && id.startsWith('{') && id.endsWith('}') && id.includes('uid')) {
+        try {
+          const parsed = JSON.parse(id);
+          return parsed.uid || id;
+        } catch {
+          return id;
+        }
+      }
+      return String(id);
+    };
     
-    // If we found one, great; otherwise fallback to first participant
+    // Clean the user ID for comparison
+    const cleanUserId = extractUid(String(currentUserId));
+    
+    // Find the participant that isn't the current user using cleaned IDs
+    const other = currentConversation.participants.find(p => {
+      if (!p || !p.id) return false;
+      const cleanParticipantId = extractUid(String(p.id));
+      return cleanParticipantId !== cleanUserId;
+    });
+    
     if (other) {
-      console.log(`Found other participant: ${other.name} (${other.id})`);
       return other;
     } else {
-      console.log('Could not find non-current user participant, using first participant as fallback');
       return currentConversation.participants[0];
     }
   }, [currentConversation, currentUserId]);
@@ -365,6 +506,8 @@ export default function ChatDetailScreen() {
       </View>
     );
   }
+  
+
   
   return (
     <KeyboardAvoidingView
@@ -468,16 +611,14 @@ export default function ChatDetailScreen() {
               minIndexForVisible: 0,
               autoscrollToTopThreshold: 1,
             }}
-            // Add date separators between message groups
-            ListHeaderComponent={
-              messages.length > 0 ? (
-                <View style={styles.dateSeparator}>
-                  <Text style={styles.dateSeparatorText}>
-                    {formatMessageDay(messages[0].createdAt)}
-                  </Text>
-                </View>
-              ) : null
-            }
+            // Optimizations to prevent excessive rerenders
+            removeClippedSubviews={true}
+            maxToRenderPerBatch={15}
+            windowSize={20}
+            initialNumToRender={15}
+            updateCellsBatchingPeriod={50}
+            // Use the DateSeparator component for the header
+            ListHeaderComponent={messages.length > 0 ? <DateSeparator date={messages[0]?.createdAt} /> : null}
             // This would ideally include multiple date separators based on message dates,
             // but for simplicity we're just showing the most recent date
           />

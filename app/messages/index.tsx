@@ -4,7 +4,7 @@ import { useChatContext } from '@/services/context/ChatContext';
 import { getCurrentUserId, getUserProfileWithCache } from '@/services/userService';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, MessageCircle, Package, ShoppingCart } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,15 +18,247 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatDistanceToNow } from 'date-fns';
 
+// Memoized conversation item component
+const ConversationItem = memo(({ 
+  item, 
+  currentUserId, 
+  userProfiles, 
+  onPress 
+}: { 
+  item: ChatConversation; 
+  currentUserId: string | null; 
+  userProfiles: Record<string, any>; 
+  onPress: (id: string) => void;
+}) => {
+  // Helper function to extract uid from JSON string IDs
+  const extractUid = (id: string): string => {
+    if (id && typeof id === 'string' && id.startsWith('{') && id.endsWith('}') && id.includes('uid')) {
+      try {
+        const parsed = JSON.parse(id);
+        return parsed.uid || id;
+      } catch {
+        return id;
+      }
+    }
+    return String(id);
+  };
+  
+  // Clean the current user ID
+  const cleanUserId = currentUserId ? extractUid(String(currentUserId)) : '';
+  
+  // Find the other participant (not the current user)
+  const otherParticipant = useMemo(() => {
+    if (!item.participants?.length) return null;
+    
+    // If we know current user ID, find the participant that's not the current user
+    if (cleanUserId) {
+      return item.participants.find(p => {
+        if (!p || !p.id) return false;
+        return extractUid(String(p.id)) !== cleanUserId;
+      }) || item.participants[0];
+    }
+    
+    // Otherwise, just return the first participant
+    return item.participants[0];
+  }, [item.participants, cleanUserId]);
+  
+  // Get enhanced profile from userProfiles
+  const enhancedProfile = useMemo(() => {
+    if (!otherParticipant?.id) return null;
+    
+    const cleanParticipantId = extractUid(String(otherParticipant.id));
+    return userProfiles[cleanParticipantId] || userProfiles[otherParticipant.id] || null;
+  }, [otherParticipant?.id, userProfiles]);
+  
+  // Format timestamp
+  const formattedDate = useMemo(() => {
+    if (!item.lastMessage?.createdAt) return '';
+    
+    // Get timestamp from Firebase or use current date
+    const lastMessageDate = item.lastMessage.createdAt 
+      ? (typeof item.lastMessage.createdAt === 'object' && 'seconds' in item.lastMessage.createdAt 
+         ? new Date(item.lastMessage.createdAt.seconds * 1000) 
+         : new Date(item.lastMessage.createdAt as any))
+      : new Date();
+    
+    // Format date using date-fns
+    return formatDistanceToNow(lastMessageDate, { addSuffix: true });
+  }, [item.lastMessage?.createdAt]);
+  
+  // Get user information
+  const userType = otherParticipant?.type || '';
+  const userTypeLabel = userType === 'seller' ? 'Seller' : userType === 'buyer' ? 'Buyer' : userType === 'admin' ? 'Admin' : '';
+  const displayName = enhancedProfile?.name || otherParticipant?.name || '';
+  const avatarUrl = enhancedProfile?.avatar || otherParticipant?.avatar || '';
+  
+  // Get unread count
+  const unreadCount = useMemo(() => {
+    if (!item.unreadCount || !currentUserId) return 0;
+    
+    // Check both the raw userId and the cleaned userId in unreadCount
+    const cleanUserId = extractUid(String(currentUserId));
+    let count = 0;
+    
+    // Check for the direct match
+    if (item.unreadCount[currentUserId]) {
+      count += item.unreadCount[currentUserId];
+    }
+    
+    // Check for the cleaned ID version if it's different
+    if (cleanUserId !== currentUserId && item.unreadCount[cleanUserId]) {
+      count += item.unreadCount[cleanUserId];
+    }
+    
+    // Check for any JSON string versions of this ID
+    Object.keys(item.unreadCount).forEach(key => {
+      if (extractUid(key) === cleanUserId && key !== currentUserId && key !== cleanUserId) {
+        count += item.unreadCount[key] || 0;
+      }
+    });
+    
+    return count;
+  }, [item.unreadCount, currentUserId]);
+  
+  // Handle click
+  const handlePress = useCallback(() => {
+    if (item.id) {
+      onPress(item.id);
+    }
+  }, [item.id, onPress]);
+  
+  return (
+    <TouchableOpacity
+      style={styles.conversationItem}
+      onPress={handlePress}
+    >
+      <View style={styles.avatarContainer}>
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatar}
+            alt={displayName}
+          />
+        ) : (
+          <View style={[
+            styles.avatarFallback,
+            userType === 'seller' ? styles.sellerAvatarBg : 
+            userType === 'admin' ? styles.adminAvatarBg : styles.buyerAvatarBg
+          ]}>
+            <Text style={styles.avatarInitial}>
+              {displayName ? displayName.charAt(0).toUpperCase() : '?'}
+            </Text>
+          </View>
+        )}
+        
+        {/* Role badge */}
+        {userTypeLabel && (
+          <View style={[
+            styles.roleBadge,
+            userType === 'seller' ? styles.sellerRoleBadge : 
+            userType === 'admin' ? styles.adminRoleBadge : styles.buyerRoleBadge
+          ]}>
+            <Text style={styles.roleBadgeText}>
+              {userType.charAt(0).toUpperCase()}
+            </Text>
+          </View>
+        )}
+      </View>
+      
+      <View style={styles.contentContainer}>
+        <View style={styles.conversationHeader}>
+          <Text 
+            style={styles.conversationName} 
+            numberOfLines={1} 
+            ellipsizeMode="tail"
+          >
+            {displayName || 'Unknown'}
+          </Text>
+          <Text style={styles.timeText}>{formattedDate}</Text>
+        </View>
+        
+        <View style={styles.messagePreview}>
+          {/* Last message preview */}
+          <Text 
+            style={styles.lastMessageText} 
+            numberOfLines={1} 
+            ellipsizeMode="tail"
+          >
+            {item.lastMessage?.text || 'No messages'}
+          </Text>
+          
+          {/* Unread count badge */}
+          {unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </Text>
+            </View>
+          )}
+        </View>
+        
+        {/* Related info badge if available */}
+        {item.relatedTo && (
+          <View style={styles.relatedInfoBadge}>
+            {item.relatedTo.type === 'product' && <Package size={10} color="#6366F1" style={{marginRight: 2}} />}
+            {item.relatedTo.type === 'order' && <ShoppingCart size={10} color="#6366F1" style={{marginRight: 2}} />}
+            <Text style={styles.relatedInfoText} numberOfLines={1} ellipsizeMode="tail">
+              {item.relatedTo.name || item.relatedTo.type}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for memoization
+  if (prevProps.item.id !== nextProps.item.id) return false;
+  if (prevProps.currentUserId !== nextProps.currentUserId) return false;
+  
+  // Check if last message has changed
+  const prevLastMessage = prevProps.item.lastMessage;
+  const nextLastMessage = nextProps.item.lastMessage;
+  if ((prevLastMessage?.text !== nextLastMessage?.text) || 
+      (prevLastMessage?.createdAt !== nextLastMessage?.createdAt)) {
+    return false;
+  }
+  
+  // Check if unread count changed
+  const prevUnread = prevProps.item.unreadCount;
+  const nextUnread = nextProps.item.unreadCount;
+  if (JSON.stringify(prevUnread) !== JSON.stringify(nextUnread)) {
+    return false;
+  }
+  
+  // If we get here, no important props changed
+  return true;
+});
+
+// Add display name
+ConversationItem.displayName = 'ConversationItem';
+
 export default function MessagesScreen() {
   const router = useRouter();
-  const { conversations, loadingConversations, refreshConversations } = useChatContext();
+  const { conversations: allConversations, loadingConversations, refreshConversations } = useChatContext();
   const [refreshing, setRefreshing] = useState(false);
   const [userProfiles, setUserProfiles] = useState<Record<string, any>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [filteredConversations, setFilteredConversations] = useState<ChatConversation[]>([]);
   const insets = useSafeAreaInsets();
 
-  // Get current user ID
+  // Helper function to extract uid from JSON string IDs - memoized to prevent recreation
+  const extractUid = useCallback((id: string): string => {
+    if (id && typeof id === 'string' && id.startsWith('{') && id.endsWith('}') && id.includes('uid')) {
+      try {
+        const parsed = JSON.parse(id);
+        return parsed.uid || id;
+      } catch {
+        return id;
+      }
+    }
+    return String(id);
+  }, []);
+
+  // Get current user ID - separated from filtering conversations
   useEffect(() => {
     const getUser = async () => {
       const userId = await getCurrentUserId();
@@ -35,182 +267,113 @@ export default function MessagesScreen() {
     
     getUser();
   }, []);
-
-  // Fetch user profiles for all participants
+  
+  // Filter conversations separately from getting the user ID
+  // This prevents having to refetch the user ID when conversations change
   useEffect(() => {
-    const fetchUserProfiles = async () => {
-      const profiles: Record<string, any> = {};
+    // Only filter if we have a user ID
+    if (!currentUserId || allConversations.length === 0) {
+      setFilteredConversations([]);
+      return;
+    }
+    
+    const userIdStr = String(currentUserId);
+    const filtered = allConversations.filter(conversation => {
+      // Check participantIds array with safer string comparison and JSON parsing
+      const userIsInParticipantIds = conversation.participantIds?.some(id => {
+        if (!id) return false;
+        const extractedId = extractUid(String(id));
+        return extractedId === userIdStr;
+      });
       
+      // Check participants array with safer string comparison and JSON parsing
+      const userIsParticipant = conversation.participants?.some(p => {
+        if (!p || !p.id) return false;
+        const extractedId = extractUid(String(p.id));
+        return extractedId === userIdStr;
+      });
+      
+      return userIsInParticipantIds || userIsParticipant;
+    });
+    
+    console.log(`Filtered conversations: ${filtered.length} of ${allConversations.length} total`);
+    setFilteredConversations(filtered);
+  }, [allConversations, currentUserId, extractUid]);
+
+  // Fetch user profiles for all participants - optimized to avoid unnecessary fetches
+  useEffect(() => {
+    // Skip if there are no conversations
+    if (filteredConversations.length === 0) return;
+    
+    const fetchUserProfiles = async () => {
       // Extract all unique user IDs from conversations
       const userIds = new Set<string>();
-      conversations.forEach(conv => {
-        conv.participants.forEach(p => {
-          if (p.id) userIds.add(p.id);
+      filteredConversations.forEach((conv: ChatConversation) => {
+        conv.participants.forEach((p: {id?: string}) => {
+          if (p.id) userIds.add(String(p.id));
         });
       });
       
-      // Fetch profile for each user ID
-      for (const userId of userIds) {
+      // Get a list of user IDs we don't already have profiles for
+      const missingUserIds = Array.from(userIds).filter(id => !userProfiles[id]);
+      
+      // Skip if we already have all the profiles we need
+      if (missingUserIds.length === 0) {
+        console.log('All user profiles already loaded');
+        return;
+      }
+      
+      console.log(`Fetching ${missingUserIds.length} missing user profiles`);
+      
+      // Create a copy of the current profiles
+      const updatedProfiles = { ...userProfiles };
+      let hasNewProfiles = false;
+      
+      // Only fetch profiles for users we don't already have
+      for (const userId of missingUserIds) {
         try {
           const profile = await getUserProfileWithCache(userId);
           if (profile) {
-            profiles[userId] = profile;
+            updatedProfiles[userId] = profile;
+            hasNewProfiles = true;
           }
         } catch (error) {
           console.error(`Error fetching profile for ${userId}:`, error);
         }
       }
       
-      setUserProfiles(profiles);
+      // Only update state if we actually have new profiles
+      if (hasNewProfiles) {
+        setUserProfiles(updatedProfiles);
+      }
     };
     
-    if (conversations.length > 0) {
-      fetchUserProfiles();
-    }
-  }, [conversations]);
+    fetchUserProfiles();
+  }, [filteredConversations, userProfiles]);
 
-  const handleRefresh = async () => {
+  // Memoize the refresh handler to prevent recreation on renders
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refreshConversations();
     setRefreshing(false);
-  };
+  }, [refreshConversations]);
 
-  const navigateToChat = (conversationId: string) => {
+  // Memoize the navigation handler to prevent recreation on renders
+  const navigateToChat = useCallback((conversationId: string) => {
     // Navigate to the chat detail screen
     // Use push here because we want to be able to go back to the messages list
     router.push(`/messages/${conversationId}`);
-  };
-
-  const renderConversationItem = ({ item }: { item: ChatConversation }) => {
-    // Get the first participant by default (ChatContext sorts participants so other user is first)
-    const otherParticipant = item.participants.length > 0 ? 
-      // If we know current user ID, find the participant that's not the current user
-      (currentUserId ? 
-        item.participants.find(p => p.id !== currentUserId) || item.participants[0]
-        : item.participants[0])
-      : null;
-    
-    // Try to get enhanced profile from userProfiles
-    let enhancedProfile = null;
-    if (otherParticipant?.id && userProfiles[otherParticipant.id]) {
-      enhancedProfile = userProfiles[otherParticipant.id];
-    }
-    
-    // Get timestamp from Firebase or use current date
-    const lastMessageDate = item.lastMessage?.createdAt 
-      ? (typeof item.lastMessage.createdAt === 'object' && 'seconds' in item.lastMessage.createdAt 
-         ? new Date(item.lastMessage.createdAt.seconds * 1000) 
-         : new Date(item.lastMessage.createdAt as any))
-      : new Date();
-    
-    // Format date using date-fns
-    const formattedDate = formatDistanceToNow(lastMessageDate, { addSuffix: true });
-    
-    // Get user role and status
-    const userType = otherParticipant?.type || '';
-    const userTypeLabel = userType === 'seller' ? 'Seller' : userType === 'buyer' ? 'Buyer' : userType === 'admin' ? 'Admin' : '';
-    
-    // Get related product/bid info if available
-    const relatedInfo = item.relatedTo;
-    
-    // Get user display information (prefer enhanced profile if available)
-    const displayName = enhancedProfile?.name || otherParticipant?.name || '';
-    const avatarUrl = enhancedProfile?.avatar || otherParticipant?.avatar || '';
-    
+  }, [router]);  // Memoize the renderConversationItem function to prevent recreation on renders
+  const renderConversationItem = useCallback(({ item }: { item: ChatConversation }) => {
     return (
-      <TouchableOpacity
-        style={styles.conversationItem}
-        onPress={() => navigateToChat(item.id!)}
-      >
-        <View style={styles.avatarContainer}>
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={styles.avatar}
-              alt={displayName}
-            />
-          ) : (
-            <View style={[
-              styles.avatarFallback,
-              userType === 'seller' ? styles.sellerAvatarBg : 
-              userType === 'admin' ? styles.adminAvatarBg : styles.buyerAvatarBg
-            ]}>
-              <Text style={styles.avatarInitial}>
-                {displayName.charAt(0).toUpperCase() || '?'}
-              </Text>
-            </View>
-          )}
-          
-          {userTypeLabel ? (
-            <View style={[
-              styles.userTypeTag,
-              userType === 'seller' ? styles.sellerTag : 
-              userType === 'admin' ? styles.adminTag : styles.buyerTag
-            ]}>
-              <Text style={styles.userTypeText}>{userTypeLabel}</Text>
-            </View>
-          ) : null}
-          
-          {/* Prominent name display badge */}
-          <View style={styles.nameOverlay}>
-            <Text style={styles.nameOverlayText} numberOfLines={1}>
-              {displayName || ''}
-            </Text>
-          </View>
-        </View>
-        
-        <View style={styles.conversationContent}>
-          <View style={styles.conversationHeader}>
-            <Text style={styles.participantName} numberOfLines={1}>
-              {displayName || ''}
-              {userTypeLabel && <Text style={styles.participantRole}> · {userTypeLabel}</Text>}
-            </Text>
-            <Text style={styles.timeText}>{formattedDate}</Text>
-          </View>
-          
-          {/* Show related info if available */}
-          {relatedInfo && (
-            <View style={styles.relatedInfoContainer}>
-              {relatedInfo.type === 'product' ? (
-                <Package size={14} color="#4F46E5" style={{marginRight: 6}} />
-              ) : relatedInfo.type === 'order' ? (
-                <ShoppingCart size={14} color="#4F46E5" style={{marginRight: 6}} />
-              ) : null}
-              <Text style={styles.relatedInfoText} numberOfLines={1}>
-                {relatedInfo.name || (relatedInfo.type.charAt(0).toUpperCase() + relatedInfo.type.slice(1))}
-              </Text>
-            </View>
-          )}
-          
-          <View style={styles.messagePreviewContainer}>
-            <Text 
-              style={styles.messagePreview} 
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {/* Always show contextual information instead of "No messages yet" */}
-              {item.lastMessage?.text || 
-                (item.relatedTo?.type === 'product' 
-                  ? `About product: ${item.relatedTo.name || ''}`
-                  : item.relatedTo?.type === 'order'
-                    ? `About order: ${item.relatedTo.name || ''}`
-                    : 'Start a conversation')
-              }
-            </Text>
-            
-            {/* Show unread badge if there are unread messages */}
-            {item.unreadCount && Object.values(item.unreadCount).some(count => count > 0) && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadCount}>
-                  {Object.values(item.unreadCount).reduce((sum, count) => sum + count, 0)}
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
+      <ConversationItem 
+        item={item}
+        currentUserId={currentUserId}
+        userProfiles={userProfiles}
+        onPress={navigateToChat}
+      />
     );
-  };
+  }, [currentUserId, userProfiles, navigateToChat]);
 
   return (
     <View style={styles.container}>
@@ -234,12 +397,12 @@ export default function MessagesScreen() {
         <View style={styles.placeholder} />
       </View>
       
-      {loadingConversations && conversations.length === 0 ? (
+      {loadingConversations && filteredConversations.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3B82F6" />
           <Text style={styles.loadingText}>Loading conversations...</Text>
         </View>
-      ) : conversations.length === 0 ? (
+      ) : filteredConversations.length === 0 ? (
         <View style={styles.emptyContainer}>
           <MessageCircle size={48} color="#94A3B8" />
           <Text style={styles.emptyTitle}>No conversations yet</Text>
@@ -249,13 +412,23 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={filteredConversations}
           renderItem={renderConversationItem}
           keyExtractor={(item) => item.id || Math.random().toString()}
           refreshing={refreshing}
           onRefresh={handleRefresh}
           contentContainerStyle={styles.listContent}
           initialNumToRender={10}
+          // Performance optimizations
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          windowSize={15}
+          updateCellsBatchingPeriod={50}
+          getItemLayout={(data, index) => ({
+            length: 80, // approximate height of your items
+            offset: 80 * index,
+            index,
+          })}
         />
       )}
     </View>

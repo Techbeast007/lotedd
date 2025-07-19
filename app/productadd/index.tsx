@@ -181,6 +181,15 @@ const ProductAdd = () => {
             return;
           }
 
+          // Validate that manufacturing cost is less than selling price
+          const mfgCost = parseFloat(manufacturingCost);
+          const sellPrice = parseFloat(sellingPricePerPiece);
+          if (mfgCost >= sellPrice) {
+            alert('Manufacturing cost must be less than selling price to ensure profitability.');
+            setIsLoading(false);
+            return;
+          }
+
           // Save product to Firestore
           await firestore().collection('products').add({
             name: productName,
